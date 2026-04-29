@@ -1,0 +1,11 @@
+﻿# This is a legacy version of this script and has been kept for archival purposes
+
+# Replace rust-uutils with gnu-coreutils
+apt install coreutils-from-gnu
+apt autoremove --purge --allow-remove-essential coreutils-from-uutils
+ls --version | grep "GNU coreutils"
+
+# Optional: Replace sudo-rs with sudo
+apt install sudo
+apt autoremove --purge sudo-rs
+sudo --version | grep "Sudo version"
