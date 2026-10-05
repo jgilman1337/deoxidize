@@ -12,7 +12,7 @@ pin_phase = "early"
 # (step 4-style leftover cleanup handles an installed sudo-rs).
 [swap]
 install = ["sudo"]
-remove = []
+remove = ["sudo-rs"]
 essential = false
 
 [verify]
@@ -22,3 +22,13 @@ binaries = ["sudo"]
 [[verify.tests]]
 command = "sudo --version"
 expected = "^Sudo version"
+
+# Ubuntu 25.10+ routes /usr/bin/sudo through update-alternatives: the GNU
+# sudo package registers /usr/bin/sudo.ws and sudo-rs registers
+# /usr/lib/cargo/bin/sudo. The swap alone does not change the selection,
+# so the group is re-pointed at the GNU path (and back on rollback).
+[[alternatives]]
+name = "sudo"
+apply = "/usr/bin/sudo.ws"
+rollback = "/usr/lib/cargo/bin/sudo"
+

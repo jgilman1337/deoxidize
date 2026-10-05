@@ -52,6 +52,18 @@ class VerifyTest:
 
 
 @dataclass
+class Alternative:
+	"""An update-alternatives master link to steer toward the GNU side."""
+
+	# Master link name (e.g. "sudo" for /usr/bin/sudo).
+	name: str
+	# Registered path to select with --set when applying (the GNU binary).
+	apply: str
+	# Registered path to select on rollback; None leaves the group alone.
+	rollback: str | None = None
+
+
+@dataclass
 class Deoxidizer:
 	"""One declarative de-Rusting definition loaded from TOML."""
 
@@ -68,6 +80,8 @@ class Deoxidizer:
 	verify_binaries: list[str]
 	# Output tests to run at the end (command output must match regex).
 	verify_tests: list[VerifyTest] = field(default_factory=list)
+	# update-alternatives groups to re-point after the swap (and on rollback).
+	alternatives: list[Alternative] = field(default_factory=list)
 	# Source path, for error messages and --list output.
 	path: Path = field(default_factory=Path)
 

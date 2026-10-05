@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import re
 import shlex
+import sys
 import tomllib
 from pathlib import Path
 
-from .model import Block, DeoxidizeError, Deoxidizer, Swap, VerifyTest
+from .model import Alternative, Block, DeoxidizeError, Deoxidizer, Swap, VerifyTest
 
 VALID_PIN_PHASES = ("early", "post_swap")
 
@@ -63,6 +64,26 @@ def _parse_verify_tests(tables: list[dict], path: Path) -> list[VerifyTest]:
 	return tests
 
 
+def _parse_alternatives(tables: list[dict], path: Path) -> list[Alternative]:
+	"""Parse and validate [[alternatives]] entries into Alternatives."""
+	alts: list[Alternative] = []
+	for i, table in enumerate(tables):
+		# name + apply are the minimum to steer a group toward the GNU side.
+		if "name" not in table or "apply" not in table:
+			raise DeoxidizeError(f"{path}: alternatives[{i}] needs 'name' and 'apply'")
+		name = str(table["name"])
+		apply_path = str(table["apply"])
+		# --set matches the exact registered path, so it must be absolute.
+		if not name or not apply_path.startswith("/"):
+			raise DeoxidizeError(f"{path}: alternatives[{i}] needs a non-empty 'name' and an absolute 'apply' path")
+		# Rollback target is optional: without it the group is left alone.
+		rollback = table.get("rollback")
+		if rollback is not None and not str(rollback).startswith("/"):
+			raise DeoxidizeError(f"{path}: alternatives[{i}].rollback must be an absolute path")
+		alts.append(Alternative(name=name, apply=apply_path, rollback=str(rollback) if rollback else None))
+	return alts
+
+
 def load_deoxidizer(path: Path) -> Deoxidizer:
 	"""Load one deoxidizer TOML file, validating structure and required keys."""
 	# Read + parse the TOML first so syntax errors point at the file.
@@ -101,6 +122,8 @@ def load_deoxidizer(path: Path) -> Deoxidizer:
 	verify = data.get("verify", {})
 	binaries = list(verify.get("binaries", []))
 	tests = _parse_verify_tests(verify.get("tests", []), path)
+	# [[alternatives]] entries re-point update-alternatives groups.
+	alts = _parse_alternatives(data.get("alternatives", []), path)
 
 	# A block-only deoxidizer must block something in at least one phase.
 	if not swap and not post_swap_block and not early_block.packages:
@@ -114,6 +137,7 @@ def load_deoxidizer(path: Path) -> Deoxidizer:
 		swap=swap,
 		verify_binaries=binaries,
 		verify_tests=tests,
+		alternatives=alts,
 		path=path,
 	)
 
@@ -149,6 +173,36 @@ def select_deoxidizers(deoxidizers: list[Deoxidizer], only: list[str], skip: lis
 	if skip:
 		return _filter_by_name(deoxidizers, skip, keep=False)
 	return deoxidizers
+
+
+def select_interactive(deoxidizers: list[Deoxidizer]) -> list[Deoxidizer]:
+	"""Prompt on the TTY for which deoxidizers to run; empty or EOF aborts."""
+	# Interactive selection needs a real terminal on both ends.
+	if not sys.stdin.isatty() or not sys.stdout.isatty():
+		raise DeoxidizeError("-i/--interactive requires a TTY; use --only/--skip for non-interactive selection")
+	print("available deoxidizers:")
+	for i, d in enumerate(deoxidizers, 1):
+		print(f"  {i}) {d.name} - {d.description}")
+	# EOF or an empty answer aborts instead of guessing a default.
+	try:
+		answer = input("select deoxidizers to run (numbers, comma/space separated; 'a' = all; empty = abort): ")
+	except EOFError:
+		raise DeoxidizeError("no selection made; aborting") from None
+	answer = answer.strip().lower()
+	# 'a'/'all' keeps every loaded deoxidizer, in definition order.
+	if answer in {"a", "all"}:
+		return list(deoxidizers)
+	if not answer:
+		raise DeoxidizeError("no selection made; aborting")
+	chosen: list[Deoxidizer] = []
+	# Each token must be a valid index; duplicates collapse to one entry.
+	for token in answer.replace(",", " ").split():
+		if not token.isdigit() or not 1 <= int(token) <= len(deoxidizers):
+			raise DeoxidizeError(f"invalid selection {token!r}; choose numbers 1-{len(deoxidizers)}")
+		d = deoxidizers[int(token) - 1]
+		if d not in chosen:
+			chosen.append(d)
+	return chosen
 
 
 def _filter_by_name(deoxidizers: list[Deoxidizer], names: list[str], keep: bool) -> list[Deoxidizer]:

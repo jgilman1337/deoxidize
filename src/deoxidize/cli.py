@@ -7,8 +7,10 @@ import os
 import sys
 from pathlib import Path
 
-from .config import load_deoxidizers, select_deoxidizers
+from .config import load_deoxidizers, select_deoxidizers, select_interactive
 from .model import DeoxidizeError
+from .preflight import confirm_plan, ensure_up_to_date
+from .rollback import run_rollback
 from .runbook import run_plan
 from .system import System, deoxidizers_dir_default
 
@@ -49,6 +51,29 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 		action=argparse.BooleanOptionalAction,
 		default=env_allow_essential,
 		help="permit removal of Essential packages such as coreutils-from-uutils (env: ALLOW_REMOVE_ESSENTIAL=0 to deny)",
+	)
+	parser.add_argument(
+		"-y",
+		"--yes",
+		action="store_true",
+		help="skip the pre-run confirmation prompt",
+	)
+	parser.add_argument(
+		"--allow-outdated",
+		action="store_true",
+		help="skip the up-to-date pre-flight check (offline/air-gapped hosts)",
+	)
+	parser.add_argument(
+		"-i",
+		"--interactive",
+		action="store_true",
+		help="interactively pick which deoxidizers to run (needs a TTY; conflicts with --only/--skip)",
+	)
+	parser.add_argument(
+		"-r",
+		"--rollback",
+		action="store_true",
+		help="undo the selected deoxidizers: remove pins and swap the blocked stack back in",
 	)
 	parser.add_argument(
 		"--deoxidizers-dir",
@@ -96,6 +121,9 @@ def main(argv: list[str]) -> int:
 		# Comma-separated values in repeatable flags flatten to name lists.
 		only = [n for part in args.only for n in part.split(",") if n]
 		skip = [n for part in args.skip for n in part.split(",") if n]
+		# Interactive picking cannot coexist with name-based filtering.
+		if args.interactive and (only or skip):
+			raise DeoxidizeError("-i/--interactive cannot be combined with --only/--skip")
 		deoxidizers = select_deoxidizers(all_deoxidizers, only, skip)
 	except DeoxidizeError as exc:
 		print(f"error: {exc}", file=sys.stderr)
@@ -121,10 +149,23 @@ def main(argv: list[str]) -> int:
 					extras.append(f"fallback: {', '.join(d.swap.fallback)}")
 				suffix = f" ({', '.join(extras)})" if extras else ""
 				print(f"  swap: install {', '.join(d.swap.install)}{suffix}")
+			for alt in d.alternatives:
+				line = f"  alternatives: {alt.name} -> {alt.apply}"
+				if alt.rollback:
+					line += f" (rollback: {alt.rollback})"
+				print(line)
 			if d.verify_binaries or d.verify_tests:
 				print(f"  verify: {len(d.verify_binaries)} binary check(s), {len(d.verify_tests)} output test(s)")
 			print(f"  source: {d.path}")
 		return EXIT_OK
+
+	# Interactive selection happens after --list so listing never prompts.
+	if args.interactive:
+		try:
+			deoxidizers = select_interactive(all_deoxidizers)
+		except DeoxidizeError as exc:
+			print(f"error: {exc}", file=sys.stderr)
+			return EXIT_USAGE
 
 	# Mutating runs require root; dry-run is intentionally root-free.
 	if not args.dry_run and os.geteuid() != 0:
@@ -133,7 +174,34 @@ def main(argv: list[str]) -> int:
 
 	sys_ = System(dry_run=args.dry_run, allow_remove_essential=args.allow_remove_essential)
 	try:
-		success = run_plan(sys_, deoxidizers, autoremove=args.autoremove, pref_dir=args.pref_dir)
+		if args.rollback:
+			# Rollback deliberately skips the freshness gate: undo must work
+			# even on a broken or offline system.
+			if not sys_.dry_run and not args.yes:
+				# Preview first: exactly which files are removed and which
+				# commands run, before asking for consent.
+				print("=== Rollback preview: exactly what will be removed and run ===")
+				preview = System(dry_run=True, allow_remove_essential=args.allow_remove_essential)
+				run_rollback(preview, deoxidizers, args.pref_dir)
+				print("=== End rollback preview ===")
+			confirm_plan(sys_, deoxidizers, assume_yes=args.yes, action="roll back")
+			run_rollback(sys_, deoxidizers, args.pref_dir)
+			success = True
+		else:
+			# Freshness gate: a real run aborts unless the system is current.
+			if not args.allow_outdated:
+				ensure_up_to_date(sys_)
+			# Show exactly what will be written and run before asking.
+			if not sys_.dry_run and not args.yes:
+				# The preview runs the full plan in dry-run mode, which prints
+				# every pin file body and every APT command (worst-case
+				# assumptions: blocked packages treated as installed).
+				print("=== Plan preview: exactly what will be written and run ===")
+				preview = System(dry_run=True, allow_remove_essential=args.allow_remove_essential)
+				run_plan(preview, deoxidizers, autoremove=args.autoremove, pref_dir=args.pref_dir)
+				print("=== End plan preview ===")
+			confirm_plan(sys_, deoxidizers, assume_yes=args.yes, action="apply", autoremove=args.autoremove)
+			success = run_plan(sys_, deoxidizers, autoremove=args.autoremove, pref_dir=args.pref_dir)
 	except DeoxidizeError as exc:
 		print(f"error: {exc}", file=sys.stderr)
 		return EXIT_ERROR

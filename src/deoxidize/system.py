@@ -83,6 +83,34 @@ class System:
 		)
 		return "ok installed" in result.stdout
 
+	def set_alternative(self, name: str, path: str) -> bool:
+		"""Point an update-alternatives master link at a registered path.
+
+		Best-effort by design: releases without the alternatives group, or
+		without the path registered in it, are skipped with a note instead
+		of failing the run — alternatives wiring varies across Ubuntu
+		versions and the verify tests still catch a wrong binary on PATH.
+		"""
+		# --list is read-only, so probing is safe even in dry-run: the plan
+		# preview shows what a real run would decide on this system.
+		probe = subprocess.run(
+			["update-alternatives", "--list", name],
+			capture_output=True,
+			text=True,
+			check=False,
+		)
+		# A missing group (e.g. sudo not alternatives-managed) is not an error.
+		if probe.returncode != 0:
+			print(f"note: no update-alternatives group {name!r}; nothing to select")
+			return True
+		registered = probe.stdout.split()
+		# --set requires the exact registered path; anything else is skipped.
+		if path not in registered:
+			choices = ", ".join(registered) or "(none)"
+			print(f"note: {path} is not registered in alternatives group {name!r} (choices: {choices}); skipping")
+			return True
+		return self.run(["update-alternatives", "--set", name, path])
+
 
 def deoxidizers_dir_default(start: Path) -> Path:
 	"""Default deoxidizers/ location: repo root, relative to a src file."""

@@ -2,7 +2,7 @@
 
 Prefer **GNU `coreutils` and GNU `sudo`** (and other baselines) on **Debian/Ubuntu-style** systems over the Rust-based stack Ubuntu has been moving toward (`coreutils-from-uutils`, `rust-coreutils`, `sudo-rs`). Implemented as a **stdlib-only Python engine** with **declarative TOML deoxidizer definitions** — the legacy bash script is preserved under **`legacy/`**.
 
-**Quick start:** `sudo ./deoxidize` from a root-capable session (local console or a shell where `sudo` still works). Read the definitions first; removing rust stack packages can pull **`ubuntu-minimal`** / **`ubuntu-server-minimal`** if nothing else keeps them installed. Always `./deoxidize --dry-run` first.
+**Quick start:** `sudo ./deoxidize` from a root-capable session (local console or a shell where `sudo` still works). Read the definitions first; removing rust stack packages can pull **`ubuntu-minimal`** / **`ubuntu-server-minimal`** if nothing else keeps them installed. Always `./deoxidize --dry-run` first. The run **aborts unless the system is fully upgraded** (`--allow-outdated` to waive), **prints the full plan preview** (exact pin files and commands), and **asks for confirmation** before touching anything (`-y`/`--yes` to skip). Pick targets with `-i`, or undo with `-r`.
 
 ## Selective deoxidizing
 
@@ -15,7 +15,7 @@ sudo ./deoxidize --only coreutils,sudo   # comma-separated
 sudo ./deoxidize --skip sudo          # everything except sudo
 ```
 
-`--only`/`--skip` are comma-separated and repeatable; unknown names abort with the available list (`--only` wins if both are given).
+`--only`/`--skip` are comma-separated and repeatable; unknown names abort with the available list (`--only` wins if both are given). `-i`/`--interactive` (TTY only) shows a numbered picker instead; it cannot be combined with `--only`/`--skip`. `-r`/`--rollback` runs the inverse runbook for the selected set.
 
 ## Python engine
 
@@ -46,6 +46,10 @@ sudo ./deoxidize --no-allow-remove-essential   # abort instead of removing Essen
 | `-n` / `--dry-run` | `DRY_RUN=1` | Print planned pins/commands; write nothing, run nothing. Assumes worst case (blocked packages installed) so the plan is complete. |
 | `-a` / `--autoremove` | `AUTOREMOVE=1` | Run `apt-get autoremove` (step 5). Default off — old kernel headers/modules lines are safe but alarming. |
 | `--allow-remove-essential` / `--no-…` | `ALLOW_REMOVE_ESSENTIAL=0` | Permit removing Essential packages (uutils is Essential=yes). |
+| `-y` / `--yes` | — | Skip the pre-run confirmation prompt (required when stdin is not a TTY). |
+| `--allow-outdated` | — | Skip the up-to-date pre-flight check (offline / air-gapped hosts). |
+| `-i` / `--interactive` | — | Pick deoxidizers from a numbered TTY menu (conflicts with `--only`/`--skip`). |
+| `-r` / `--rollback` | — | Undo the selected deoxidizers: remove pins and swap the blocked stack back in. |
 | `--deoxidizers-dir` | — | Alternate TOML directory (default: `./deoxidizers` next to the script). |
 | `--pref-dir` | — | Alternate APT preferences directory (default: `/etc/apt/preferences.d`). Useful for testing. |
 
@@ -84,6 +88,15 @@ command = "ls --version"
 expected = "GNU coreutils"
 ```
 
+**`[[alternatives]]`** — optional; re-points `update-alternatives` master links after the swap so binaries routed through alternatives (e.g. `/usr/bin/sudo` on Ubuntu 25.10+) actually select the GNU path. `apply` is the registered path to `--set` when applying; `rollback` is the path to `--set` when rolling back (omit to leave the group alone). Groups or paths missing on a given system are skipped with a note, not an error:
+
+```toml
+[[alternatives]]
+name = "sudo"                      # master link (e.g. /usr/bin/sudo)
+apply = "/usr/bin/sudo.ws"         # GNU sudo's registered path
+rollback = "/usr/lib/cargo/bin/sudo"  # sudo-rs's registered path
+```
+
 **`deoxidize.sh` lives in `legacy/`** — kept frozen as the reference implementation until the Python engine has survived one real upgrade cycle.
 
 ## Development
@@ -96,9 +109,11 @@ Tooling runs through **uv** (no global installs): `./lint_n_fmt.sh` syncs the de
 
 | Step | Action |
 |------|--------|
+| **0** | **Pre-flight gates**: refresh package lists, then simulate `apt-get full-upgrade` and **abort unless the system is fully upgraded** (`--allow-outdated` waives this; dry-run warns instead). Then print the **full plan preview** — every pin file body and every APT command, exactly as they will be written/run — and ask **`Proceed? [y/N]`**. Anything but `y`/`yes` aborts with no changes (`--yes` skips the prompt; non-interactive stdin aborts unless `--yes`). |
 | **1** | Writes **early** APT preferences: **`Pin-Priority: -1`** for **`sudo-rs`** and **`rust-coreutils`** only. **`coreutils-from-uutils` is not pinned yet** so APT can replace it cleanly. |
 | **2** | **`apt-get update`** |
 | **3** | Ensures **`sudo`** (GNU), then swaps to **`coreutils-from-gnu`**. If **`coreutils-from-uutils`** is installed, uses **`apt install coreutils-from-gnu coreutils-from-uutils-`** in one transaction (trailing **`-`** = remove that package) plus **`--allow-remove-essential`** because uutils is **Essential** on Ubuntu. Falls back to the legacy **`coreutils`** metapackage if the swap fails. Uses **`apt`** when available, else **`apt-get`**. |
+| **3b** | **`update-alternatives --set`** for each configured **`[[alternatives]]`** group (e.g. points **`sudo`** at **`/usr/bin/sudo.ws`**). Skipped with a note when the group or path does not exist on this system. |
 | **4** | Removes any still-installed **`sudo-rs`**, **`rust-coreutils`**, **`coreutils-from-uutils`** with **`apt-get --allow-remove-essential`** (metapackage transitions). Often empty after a successful step 3. |
 | **4b** | Writes **full** preferences (adds **`coreutils-from-uutils`** pin) and **`apt-get update`** again. |
 | **5** | **`apt-get autoremove`** only if **`AUTOREMOVE=1`** (default is **skip** — see below). |
@@ -193,7 +208,28 @@ This section mixes **stated project goals** with **cited, checkable facts**. The
 
 ---
 
-## Undo
+## Rollback (`-r`)
+
+The engine can undo itself for the selected deoxidizers (`--only`/`--skip`/`-i` all work here too):
+
+```bash
+sudo ./deoxidize -r                 # roll back everything
+sudo ./deoxidize -r --only sudo    # roll back just the sudo swap
+sudo ./deoxidize -r -n             # preview the rollback, change nothing
+```
+
+Rollback stages (R1-R4):
+
+| Step | Action |
+|------|--------|
+| **R1** | Removes `/etc/apt/preferences.d/99-deoxidize-<name>.pref` for each selected deoxidizer (plus the legacy `99-block-sudo-rs-rust-coreutils.pref` if present). |
+| **R2** | `apt-get update` — the blocked stack becomes installable again. |
+| **R3** | One same-transaction inverse swap per deoxidizer: reinstall the previously blocked packages and remove the GNU replacement (e.g. `apt install rust-coreutils coreutils-from-uutils coreutils-from-gnu-`). Skipped when the replacement was never installed. Configured **`[[alternatives]]`** groups are re-pointed at their **`rollback`** path (e.g. `sudo` → `/usr/lib/cargo/bin/sudo`). |
+| **R4** | `apt-get update` again, then `apt-cache policy` for the restored packages. |
+
+Notes: rollback **skips the up-to-date gate** on purpose — undo must work on a broken or offline system — and `ALLOW_REMOVE_ESSENTIAL=0` does not block it (the GNU side is not Essential; that flag guards the forward swap's uutils removal). Like apply, rollback prints the exact files to delete and exact commands to run, then asks **`Proceed? [y/N]`**.
+
+### Manual undo (fallback)
 
 ```bash
 sudo rm -f /etc/apt/preferences.d/99-block-sudo-rs-rust-coreutils.pref

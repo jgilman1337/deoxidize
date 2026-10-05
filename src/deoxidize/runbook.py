@@ -13,9 +13,26 @@ from .pins import write_pin_files
 from .system import LEGACY_PREF_FILE, System
 
 
+def apply_alternatives(sys_: System, d: Deoxidizer) -> None:
+	"""Re-point the deoxidizer's update-alternatives groups at the GNU side.
+
+	Idempotent and best-effort: the probe in System.set_alternative skips
+	groups or paths this system does not have.
+	"""
+	# Announce even when there is nothing configured, so runs are legible.
+	if not d.alternatives:
+		return
+	for alt in d.alternatives:
+		print(f"[{d.name}] update-alternatives --set {alt.name} {alt.apply}")
+		sys_.set_alternative(alt.name, alt.apply)
+
+
 def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 	"""Apply one deoxidizer's swap (if any) and remove leftover targets."""
 	if not d.swap:
+		# Block-only deoxidizers swap nothing, but may still steer
+		# alternatives groups (e.g. when the GNU side is already installed).
+		apply_alternatives(sys_, d)
 		return
 	swap = d.swap
 	# Skip the swap entirely when the replacement is already installed and
@@ -23,6 +40,8 @@ def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 	remaining = [p for p in swap.remove if sys_.package_installed(p)]
 	if not remaining:
 		print(f"[{d.name}] nothing to swap; replacement already in place")
+		# Re-run safety: still fix alternatives that point at the rust side.
+		apply_alternatives(sys_, d)
 		return
 	print(f"[{d.name}] swapping to {', '.join(swap.install)} (removing {', '.join(remaining)})")
 	if not sys_.swap(swap.install, remaining, swap.essential):
@@ -37,6 +56,9 @@ def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 	if leftovers:
 		print(f"[{d.name}] removing leftovers: {', '.join(leftovers)}")
 		sys_.apt_get("remove", "--allow-remove-essential", *leftovers) if swap.essential else sys_.apt_get("remove", *leftovers)
+
+	# The swap is done: make sure the alternatives group selects the GNU path.
+	apply_alternatives(sys_, d)
 
 
 def verify_deoxidizer(sys_: System, d: Deoxidizer, pref_dir: Path) -> bool:
