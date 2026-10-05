@@ -93,6 +93,8 @@ expected = "GNU coreutils"
 
 **`staged = true`** — optional `[swap]` flag changing the swap order from one same-transaction solve to three stages: **install the replacements → re-point `[[alternatives]]` while both sides are registered → remove the offending packages**. Use it when the binary must never disappear or dangle (sudo); the default same-transaction solve stays correct for conflicting providers (coreutils), where installing the replacement alone can fail with "two conflicting assignments".
 
+Note that **coreutils itself has no `[[alternatives]]` stanza on purpose**: Ubuntu does not route coreutils through `update-alternatives` at all — it uses the provider-package model, where the `coreutils` metapackage depends on exactly one provider and installing `coreutils-from-gnu` re-points the `/usr/bin/*` symlinks as part of the swap transaction. Only binaries actually registered with `update-alternatives` (e.g. `sudo` on 25.10+) need the stanza; the verify step's `readlink`/`dpkg -S` output confirms where the symlinks really resolve.
+
 **`[post_install]`** — optional; declarative commands run after the deoxidizer's apply steps finish (swap, pins, alternatives), always — including on idempotent re-runs. Commands are split like `verify.tests` (no shell interpolation; wrap in `sh -c '…'` for pipes/redirection). Best-effort: a failure prints a loud warning but does not fail the run, since the swap itself has already succeeded. The coreutils deoxidizer uses it to restore the `ubuntu-minimal` metapackage when the uutils removal drops it:
 
 ```toml
