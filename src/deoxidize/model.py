@@ -36,6 +36,9 @@ class Swap:
 	# Packages to make sure are installed BEFORE any surgery (bootstrapping
 	# safety net, e.g. keep a root shell working while swaps run).
 	ensure: list[str] = field(default_factory=list)
+	# True: install replacements, re-point alternatives, then remove targets
+	# in separate transactions. False (default): one same-transaction solve.
+	staged: bool = False
 
 
 @dataclass

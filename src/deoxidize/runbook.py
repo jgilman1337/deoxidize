@@ -42,6 +42,54 @@ def run_post_install(sys_: System, d: Deoxidizer) -> None:
 			print(f"warning: post-install command failed: {exc}")
 
 
+def _install_or_fallback(sys_: System, d: Deoxidizer, install: list[str]) -> None:
+	"""Install the replacement packages, falling back when the swap fails."""
+	if sys_.apt_install(*install):
+		return
+	# Primary install failed: try the fallback metapackage before giving up.
+	if not d.swap or not d.swap.fallback:
+		raise DeoxidizeError(f"[{d.name}] install failed and no fallback is defined")
+	print(f"[{d.name}] install failed; installing legacy fallback {', '.join(d.swap.fallback)}")
+	sys_.apt_install(*d.swap.fallback)
+
+
+def apply_staged_swap(sys_: System, d: Deoxidizer, offending: list[str]) -> None:
+	"""Staged swap: install replacements, re-point alternatives, then remove.
+
+	The safe ordering for binaries that must never disappear (sudo): the
+	replacement is installed and alternatives already select it BEFORE the
+	offending package is removed, so no point in the run leaves the link
+	dangling or a broken binary on PATH.
+	"""
+	swap = d.swap
+	assert swap is not None
+	# 1) Install the replacement side on its own (both providers may briefly
+	# coexist; alternatives still picks the old path until step 2).
+	_install_or_fallback(sys_, d, swap.install)
+	# 2) Re-point alternatives while both sides are registered, so removal
+	# below cannot leave the master link pointing at a vanishing binary.
+	apply_alternatives(sys_, d)
+	# 3) Remove the offending packages in their own transaction.
+	if swap.essential:
+		sys_.apt_get("remove", "--allow-remove-essential", *offending)
+	else:
+		sys_.apt_get("remove", *offending)
+
+
+def apply_same_transaction_swap(sys_: System, d: Deoxidizer, remaining: list[str]) -> None:
+	"""Same-transaction swap: install + remove in one apt solve.
+
+	Required when both providers conflict and installing the replacement
+	alone can fail with 'two conflicting assignments' while the blocked
+	provider stays selected.
+	"""
+	swap = d.swap
+	assert swap is not None
+	if not sys_.swap(swap.install, remaining, swap.essential):
+		# Primary swap failed: try the fallback metapackage before giving up.
+		_install_or_fallback(sys_, d, swap.fallback)
+
+
 def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 	"""Apply one deoxidizer's swap (if any) and remove leftover targets."""
 	if not d.swap:
@@ -58,13 +106,12 @@ def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 		# Re-run safety: still fix alternatives that point at the rust side.
 		apply_alternatives(sys_, d)
 		return
-	print(f"[{d.name}] swapping to {', '.join(swap.install)} (removing {', '.join(remaining)})")
-	if not sys_.swap(swap.install, remaining, swap.essential):
-		# Primary swap failed: try the fallback metapackage before giving up.
-		if not swap.fallback:
-			raise DeoxidizeError(f"[{d.name}] swap failed and no fallback is defined")
-		print(f"[{d.name}] swap failed; installing legacy fallback {', '.join(swap.fallback)}")
-		sys_.apt_install(*swap.fallback)
+	mode = "staged swap" if swap.staged else "same-transaction swap"
+	print(f"[{d.name}] {mode}: install {', '.join(swap.install)} (removing {', '.join(remaining)})")
+	if swap.staged:
+		apply_staged_swap(sys_, d, remaining)
+	else:
+		apply_same_transaction_swap(sys_, d, remaining)
 
 	# Remove any still-installed blocked packages (metapackage transitions).
 	leftovers = [p for p in d.blocked_packages if sys_.package_installed(p)]

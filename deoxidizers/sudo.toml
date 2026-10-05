@@ -16,6 +16,9 @@ remove = ["sudo-rs"]
 essential = false
 # Keep a working root-capable binary on the system before any surgery runs.
 ensure = ["sudo"]
+# Staged order: install GNU sudo, re-point alternatives while both binaries
+# are registered, THEN remove sudo-rs — /usr/bin/sudo never goes dangling.
+staged = true
 
 [verify]
 binaries = ["sudo"]

@@ -91,6 +91,8 @@ expected = "GNU coreutils"
 
 **`[[alternatives]]`** — optional; re-points `update-alternatives` master links after the swap so binaries routed through alternatives (e.g. `/usr/bin/sudo` on Ubuntu 25.10+) actually select the GNU path. `apply` is the registered path to `--set` when applying; `rollback` is the path to `--set` when rolling back (omit to leave the group alone). Groups or paths missing on a given system are skipped with a note, not an error. `[swap]` also takes an optional **`ensure`** list: packages installed (if missing) before any surgery runs, as a bootstrapping safety net — the sudo deoxidizer declares `ensure = ["sudo"]` so a root-capable binary stays present throughout the run.
 
+**`staged = true`** — optional `[swap]` flag changing the swap order from one same-transaction solve to three stages: **install the replacements → re-point `[[alternatives]]` while both sides are registered → remove the offending packages**. Use it when the binary must never disappear or dangle (sudo); the default same-transaction solve stays correct for conflicting providers (coreutils), where installing the replacement alone can fail with "two conflicting assignments".
+
 **`[post_install]`** — optional; declarative commands run after the deoxidizer's apply steps finish (swap, pins, alternatives), always — including on idempotent re-runs. Commands are split like `verify.tests` (no shell interpolation; wrap in `sh -c '…'` for pipes/redirection). Best-effort: a failure prints a loud warning but does not fail the run, since the swap itself has already succeeded. The coreutils deoxidizer uses it to restore the `ubuntu-minimal` metapackage when the uutils removal drops it:
 
 ```toml

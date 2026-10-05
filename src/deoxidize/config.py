@@ -37,6 +37,7 @@ def _parse_swap(table: dict, path: Path) -> Swap:
 		essential=bool(table.get("essential", False)),
 		fallback=list(table.get("fallback", [])),
 		ensure=list(table.get("ensure", [])),
+		staged=bool(table.get("staged", False)),
 	)
 
 
