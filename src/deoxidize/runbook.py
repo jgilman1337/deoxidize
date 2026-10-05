@@ -69,9 +69,9 @@ def apply_staged_swap(sys_: System, d: Deoxidizer, offending: list[str]) -> None
 	apply_alternatives(sys_, d)
 	# 3) Remove the offending packages in their own transaction.
 	if swap.essential:
-		sys_.apt_get("remove", "--allow-remove-essential", *offending)
+		sys_.apt("remove", "--allow-remove-essential", *offending)
 	else:
-		sys_.apt_get("remove", *offending)
+		sys_.apt("remove", *offending)
 
 
 def apply_same_transaction_swap(sys_: System, d: Deoxidizer, remaining: list[str]) -> None:
@@ -115,7 +115,7 @@ def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 	leftovers = [p for p in d.blocked_packages if sys_.package_installed(p)]
 	if leftovers:
 		print(f"[{d.name}] removing leftovers: {', '.join(leftovers)}")
-		sys_.apt_get("remove", "--allow-remove-essential", *leftovers) if swap.essential else sys_.apt_get("remove", *leftovers)
+		sys_.apt("remove", "--allow-remove-essential", *leftovers) if swap.essential else sys_.apt("remove", *leftovers)
 
 	# The swap is done: make sure the alternatives group selects the GNU path.
 	apply_alternatives(sys_, d)
@@ -204,7 +204,7 @@ def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref
 	write_pin_files(early, pref_dir, dry_run=sys_.dry_run, full=False)
 
 	print("=== 2) Refresh package lists ===")
-	sys_.apt_get("update")
+	sys_.apt_update()
 
 	print("=== 3) Ensure declared bootstrap packages are present before surgery ===")
 	# Union of every deoxidizer's [swap] ensure list, in definition order.
@@ -230,19 +230,19 @@ def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref
 		apply_deoxidizer(sys_, d)
 
 	print("=== 4b) Full APT preferences (deferred pins; no refresh needed) ===")
-	# No apt-get update here: preferences are re-read at every solve, and
+	# No apt update here: preferences are re-read at every solve, and
 	# the package lists did not change since step 2.
 	write_pin_files(deoxidizers, pref_dir, dry_run=sys_.dry_run, full=True)
 
 	print("=== 5) Autoremove unused deps (opt-in) ===")
 	if autoremove:
 		# Old kernel headers/modules often show up here; safe but alarming.
-		sys_.apt_get("autoremove")
+		sys_.apt("autoremove")
 	else:
 		print("Skipping autoremove (default). Enable with --autoremove or AUTOREMOVE=1.")
 
 	print("=== 6) Upgrade (GNU packages remain candidates) ===")
-	sys_.apt_get("full-upgrade")
+	sys_.apt("full-upgrade")
 
 	print("=== 7) Ensure replacements are not on hold ===")
 	# Pins replace holds; unholding replacements is cleanup, best-effort.
@@ -260,5 +260,5 @@ def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref
 	if not all_ok:
 		print("error: one or more verifications FAILED", file=sys.stderr)
 
-	print("done. To allow the blocked stacks again: rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && apt-get update")
+	print("done. To allow the blocked stacks again: rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && apt update")
 	return all_ok

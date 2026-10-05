@@ -45,7 +45,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 		"--autoremove",
 		action="store_true",
 		default=env_autoremove,
-		help="run apt-get autoremove at the end (env: AUTOREMOVE=1)",
+		help="run apt autoremove at the end (env: AUTOREMOVE=1)",
 	)
 	parser.add_argument(
 		"--allow-remove-essential",

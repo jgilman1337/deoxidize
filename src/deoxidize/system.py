@@ -66,9 +66,17 @@ class System:
 			raise DeoxidizeError(f"command failed ({result.returncode}): {shlex.join(cmd)}")
 		return result.returncode == 0
 
-	def apt_get(self, *args: str, allow_fail: bool = False) -> bool:
-		"""Run apt-get with the shared noninteractive dpkg options."""
-		return self.run(["apt-get", "-y", *self.dpkg_opts, *args], allow_fail=allow_fail)
+	def apt_update(self) -> bool:
+		"""Refresh package lists; apt(8) preferred, apt-get fallback."""
+		# No -y or dpkg options needed: update neither prompts nor configures.
+		frontend = "apt" if shutil.which("apt") else "apt-get"
+		return self.run([frontend, "update"])
+
+	def apt(self, *args: str, allow_fail: bool = False) -> bool:
+		"""Run apt(8) with the shared noninteractive dpkg options."""
+		# apt(8) is the modern frontend; apt-get is a minimal-image fallback.
+		frontend = "apt" if shutil.which("apt") else "apt-get"
+		return self.run([frontend, "-y", *self.dpkg_opts, *args], allow_fail=allow_fail)
 
 	def apt_install(self, *pkgs: str) -> bool:
 		"""Install packages without recommends; prefers apt(8) if present."""

@@ -37,14 +37,14 @@ legacy/           # frozen deoxidize.sh + notes, kept for reference
 ./deoxidize --list              # show loaded deoxidizers, no root needed
 sudo ./deoxidize --dry-run      # print the full plan, change nothing
 sudo ./deoxidize                # apply (same staged-pin order as deoxidize.sh)
-sudo ./deoxidize --autoremove   # also run apt-get autoremove at the end
+sudo ./deoxidize --autoremove   # also run apt autoremove at the end
 sudo ./deoxidize --no-allow-remove-essential   # abort instead of removing Essential pkgs
 ```
 
 | Flag | Env fallback | Meaning |
 |------|--------------|---------|
 | `-n` / `--dry-run` | `DRY_RUN=1` | Print planned pins/commands; write nothing, run nothing. Assumes worst case (blocked packages installed) so the plan is complete. |
-| `-a` / `--autoremove` | `AUTOREMOVE=1` | Run `apt-get autoremove` (step 5). Default off — old kernel headers/modules lines are safe but alarming. |
+| `-a` / `--autoremove` | `AUTOREMOVE=1` | Run `apt autoremove` (step 5). Default off — old kernel headers/modules lines are safe but alarming. |
 | `--allow-remove-essential` / `--no-…` | `ALLOW_REMOVE_ESSENTIAL=0` | Permit removing Essential packages (uutils is Essential=yes). |
 | `-y` / `--yes` | — | Skip the pre-run confirmation prompt (required when stdin is not a TTY). |
 | `-v` / `--verbose` | — | Show detail: stream all command output live (apt runs, `apt-cache policy`, alternatives), print pin file bodies and `dpkg -S` ownership. Normal runs stay minimal — captured output appears only on failure. Dry-run previews always show full detail. |
@@ -54,7 +54,7 @@ sudo ./deoxidize --no-allow-remove-essential   # abort instead of removing Essen
 | `--deoxidizers-dir` | — | Alternate TOML directory (default: `./deoxidizers` next to the script). |
 | `--pref-dir` | — | Alternate APT preferences directory (default: `/etc/apt/preferences.d`). Useful for testing. |
 
-Pins are written per deoxidizer as `/etc/apt/preferences.d/99-deoxidize-<name>.pref`; undo with `sudo rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && sudo apt-get update`. If the legacy `99-block-sudo-rs-rust-coreutils.pref` is still present, the engine warns — remove it to keep undo simple.
+Pins are written per deoxidizer as `/etc/apt/preferences.d/99-deoxidize-<name>.pref`; undo with `sudo rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && sudo apt update`. If the legacy `99-block-sudo-rs-rust-coreutils.pref` is still present, the engine warns — remove it to keep undo simple.
 
 **Deoxidizer format** — one TOML per target; current definitions:
 
@@ -101,7 +101,7 @@ Note that **coreutils itself has no `[[alternatives]]` stanza on purpose**: Ubun
 ```toml
 [post_install]
 commands = [
-	"apt-get -y install --no-install-recommends ubuntu-minimal",
+	"apt -y install --no-install-recommends ubuntu-minimal",
 ]
 ```
 
@@ -124,15 +124,15 @@ Tooling runs through **uv** (no global installs): `./lint_n_fmt.sh` syncs the de
 
 | Step | Action |
 |------|--------|
-| **0** | **Pre-flight gates**: refresh package lists, then simulate `apt-get full-upgrade` and **abort unless the system is fully upgraded** (`--allow-outdated` waives this; dry-run warns instead). Then print the **full plan preview** — every pin file body and every APT command, exactly as they will be written/run — and ask **`Proceed? [y/N]`**. Anything but `y`/`yes` aborts with no changes (`--yes` skips the prompt; non-interactive stdin aborts unless `--yes`). |
+| **0** | **Pre-flight gates**: refresh package lists, then simulate `apt full-upgrade` and **abort unless the system is fully upgraded** (`--allow-outdated` waives this; dry-run warns instead). Then print the **full plan preview** — every pin file body and every APT command, exactly as they will be written/run — and ask **`Proceed? [y/N]`**. Anything but `y`/`yes` aborts with no changes (`--yes` skips the prompt; non-interactive stdin aborts unless `--yes`). |
 | **1** | Writes **early** APT preferences: **`Pin-Priority: -1`** for **`sudo-rs`** and **`rust-coreutils`** only. **`coreutils-from-uutils` is not pinned yet** so APT can replace it cleanly. |
-| **2** | **`apt-get update`** |
-| **3** | Installs every **`ensure`** package declared by the selected deoxidizers' `[swap]` tables (a bootstrapping safety net — e.g. keeping a root-capable binary present before any surgery), skipping ones already installed. Then applies swaps: if **`coreutils-from-uutils`** is installed, uses **`apt install coreutils-from-gnu coreutils-from-uutils-`** in one transaction (trailing **`-`** = remove that package) plus **`--allow-remove-essential`** because uutils is **Essential** on Ubuntu. Falls back to the legacy **`coreutils`** metapackage if the swap fails. Uses **`apt`** when available, else **`apt-get`**. |
+| **2** | **`apt update`** |
+| **3** | Installs every **`ensure`** package declared by the selected deoxidizers' `[swap]` tables (a bootstrapping safety net — e.g. keeping a root-capable binary present before any surgery), skipping ones already installed. Then applies swaps: if **`coreutils-from-uutils`** is installed, uses **`apt install coreutils-from-gnu coreutils-from-uutils-`** in one transaction (trailing **`-`** = remove that package) plus **`--allow-remove-essential`** because uutils is **Essential** on Ubuntu. Falls back to the legacy **`coreutils`** metapackage if the swap fails. Uses **`apt`** when available, else **`apt`**. |
 | **3b** | **`update-alternatives --set`** for each configured **`[[alternatives]]`** group (e.g. points **`sudo`** at **`/usr/bin/sudo.ws`**). Skipped with a note when the group or path does not exist on this system. |
-| **4** | Removes any still-installed **`sudo-rs`**, **`rust-coreutils`**, **`coreutils-from-uutils`** with **`apt-get --allow-remove-essential`** (metapackage transitions). Often empty after a successful step 3. |
-| **4b** | Writes **full** preferences (adds **`coreutils-from-uutils`** pin). No **`apt-get update`** — preferences are re-read at every solve and the lists have not changed since step 2. |
-| **5** | **`apt-get autoremove`** only if **`AUTOREMOVE=1`** (default is **skip** — see below). |
-| **6** | **`apt-get full-upgrade`** |
+| **4** | Removes any still-installed **`sudo-rs`**, **`rust-coreutils`**, **`coreutils-from-uutils`** with **`apt --allow-remove-essential`** (metapackage transitions). Often empty after a successful step 3. |
+| **4b** | Writes **full** preferences (adds **`coreutils-from-uutils`** pin). No **`apt update`** — preferences are re-read at every solve and the lists have not changed since step 2. |
+| **5** | **`apt autoremove`** only if **`AUTOREMOVE=1`** (default is **skip** — see below). |
+| **6** | **`apt full-upgrade`** |
 | **7** | **`apt-mark unhold`** on **`sudo`** and **`coreutils-from-gnu`** (cleanup). Blocked packages are **not** put on hold: with **Pin-Priority: -1** they have **no install candidate**, so **`apt-mark hold`** does not apply reliably. |
 | **8** | Prints **`apt-cache policy`**, **`dpkg -l`**, and **`dpkg -S`** for **`sudo`** / **`ls`** (with **`readlink -f`** fallback for alternatives). |
 
@@ -145,7 +145,7 @@ Preferences file: **`/etc/apt/preferences.d/99-block-sudo-rs-rust-coreutils.pref
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | **`ALLOW_REMOVE_ESSENTIAL`** | **`1`** | Must stay **`1`** for step **3** (uutils swap) and step **4** (rust removals) when APT would remove **Essential** packages. Set **`0`** to abort instead of passing **`--allow-remove-essential`**. |
-| **`AUTOREMOVE`** | **`0`** | If **`1`**, run **`apt-get autoremove`** in step 5. Default **skip**: autoremove often proposes old **`linux-headers-*` / `linux-modules-*`** trees for a **kernel you no longer boot** — usually safe but alarming and unrelated to this script. |
+| **`AUTOREMOVE`** | **`0`** | If **`1`**, run **`apt autoremove`** in step 5. Default **skip**: autoremove often proposes old **`linux-headers-*` / `linux-modules-*`** trees for a **kernel you no longer boot** — usually safe but alarming and unrelated to this script. |
 | **`DRY_RUN`** | **`0`** | If **`1`**, APT invocations print what would run and skip changes (see script). |
 
 Examples:
@@ -161,7 +161,7 @@ ALLOW_REMOVE_ESSENTIAL=0 sudo ./deoxidize.sh   # aborts when Essential removal w
 ## Why staged pins and a same-transaction swap?
 
 - Pinning **`coreutils-from-uutils`** to **`-1`** *before* swapping can confuse the solver into impossible **Conflicts** between GNU and uutils providers. This script defers that pin until **after** GNU is in place (**step 4b**).
-- **`apt-get install coreutils-from-gnu`** alone can fail with **“two conflicting assignments”** while uutils remains selected. Installing **`coreutils-from-gnu`** and **`coreutils-from-uutils-`** together fixes that.
+- **`apt install coreutils-from-gnu`** alone can fail with **“two conflicting assignments”** while uutils remains selected. Installing **`coreutils-from-gnu`** and **`coreutils-from-uutils-`** together fixes that.
 - Removing **Essential** **`coreutils-from-uutils`** requires **`--allow-remove-essential`** with noninteractive **`-y`** — same class of issue as step **4**.
 
 ---
@@ -170,7 +170,7 @@ ALLOW_REMOVE_ESSENTIAL=0 sudo ./deoxidize.sh   # aborts when Essential removal w
 
 **`ubuntu-minimal`** is a **metapackage**: almost no files; it **Depends** on a curated minimal set so upgrades can pull new “minimal Ubuntu” pieces. **`ubuntu-server-minimal`** is similar for server images.
 
-If your only dependency on those metas was the rust stack, step **4** may **remove** them. Your actual utilities (**`coreutils-from-gnu`**, **`sudo`**, etc.) stay. The coreutils deoxidizer's **`[post_install]`** command reinstalls **`ubuntu-minimal`** automatically after the swap (`apt-get -y install --no-install-recommends ubuntu-minimal`, best-effort — a failure warns without failing the run). You can always check first with **`apt install -s …`**.
+If your only dependency on those metas was the rust stack, step **4** may **remove** them. Your actual utilities (**`coreutils-from-gnu`**, **`sudo`**, etc.) stay. The coreutils deoxidizer's **`[post_install]`** command reinstalls **`ubuntu-minimal`** automatically after the swap (`apt -y install --no-install-recommends ubuntu-minimal`, best-effort — a failure warns without failing the run). You can always check first with **`apt install -s …`**.
 
 ---
 
@@ -252,9 +252,9 @@ Rollback stages (R1-R4):
 | Step | Action |
 |------|--------|
 | **R1** | Removes `/etc/apt/preferences.d/99-deoxidize-<name>.pref` for each selected deoxidizer (plus the legacy `99-block-sudo-rs-rust-coreutils.pref` if present). |
-| **R2** | `apt-get update` — the blocked stack becomes installable again. |
+| **R2** | `apt update` — the blocked stack becomes installable again. |
 | **R3** | One same-transaction inverse swap per deoxidizer: reinstall the previously blocked packages and remove the GNU replacement (e.g. `apt install rust-coreutils coreutils-from-uutils coreutils-from-gnu-`). Skipped when the replacement was never installed. Configured **`[[alternatives]]`** groups are re-pointed at their **`rollback`** path (e.g. `sudo` → `/usr/lib/cargo/bin/sudo`). |
-| **R4** | `apt-cache policy` for the restored packages. No **`apt-get update`** — removing pin files takes effect at solve time and the lists were refreshed in R2. |
+| **R4** | `apt-cache policy` for the restored packages. No **`apt update`** — removing pin files takes effect at solve time and the lists were refreshed in R2. |
 
 Notes: rollback **skips the up-to-date gate** on purpose — undo must work on a broken or offline system — and `ALLOW_REMOVE_ESSENTIAL=0` does not block it (the GNU side is not Essential; that flag guards the forward swap's uutils removal). Like apply, rollback prints the exact files to delete and exact commands to run, then asks **`Proceed? [y/N]`**.
 
@@ -262,7 +262,7 @@ Notes: rollback **skips the up-to-date gate** on purpose — undo must work on a
 
 ```bash
 sudo rm -f /etc/apt/preferences.d/99-block-sudo-rs-rust-coreutils.pref
-sudo apt-get update
+sudo apt update
 ```
 
 Reinstall metapackages if you removed them and want them back:

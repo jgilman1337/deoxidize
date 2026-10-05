@@ -41,5 +41,5 @@ expected = "GNU coreutils"
 # output is captured unless -v.
 [post_install]
 commands = [
-	"apt-get -y install --no-install-recommends ubuntu-minimal",
+	"apt install --no-install-recommends -y ubuntu-minimal",
 ]

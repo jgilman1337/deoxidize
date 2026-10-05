@@ -18,7 +18,7 @@ def render_pin_file(deoxidizer: Deoxidizer, include_deferred: bool = True) -> st
 	lines = [
 		f"# Managed by deoxidize (from {deoxidizer.path.name}).",
 		"# Pin-Priority -1 means APT will never install these packages.",
-		"# Remove this file (and re-run apt-get update) to undo.",
+		"# Remove this file (and re-run apt update) to undo.",
 		"",
 	]
 	# Collect only the packages allowed in this phase's file.

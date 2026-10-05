@@ -14,7 +14,7 @@ def _pending_upgrade_count() -> int:
 	# LC_ALL=C keeps apt's simulate tokens stable across locales.
 	env = {**os.environ, "LC_ALL": "C"}
 	result = subprocess.run(
-		["apt-get", "-s", "full-upgrade"],
+		["apt", "-s", "full-upgrade"],
 		capture_output=True,
 		text=True,
 		check=False,
@@ -22,7 +22,7 @@ def _pending_upgrade_count() -> int:
 	)
 	# A broken simulation means we cannot know whether the system is current.
 	if result.returncode != 0:
-		raise DeoxidizeError(f"apt-get -s full-upgrade failed ({result.returncode}): {result.stderr.strip()}")
+		raise DeoxidizeError(f"apt -s full-upgrade failed ({result.returncode}): {result.stderr.strip()}")
 	# Each simulated 'Inst ' line is one package apt would install or upgrade.
 	return sum(1 for line in result.stdout.splitlines() if line.startswith("Inst "))
 
@@ -32,7 +32,7 @@ def ensure_up_to_date(sys_: System) -> None:
 	# One concise line for the refresh; full apt output is -v-only and
 	# failures still print everything they captured.
 	print("Refreshing package lists...")
-	sys_.apt_get("update")
+	sys_.apt_update()
 	pending = _pending_upgrade_count()
 	# Dry-run reports without failing so the plan stays previewable.
 	if sys_.dry_run:
@@ -49,7 +49,7 @@ def ensure_up_to_date(sys_: System) -> None:
 	if pending:
 		raise DeoxidizeError(
 			f"system is not up to date ({pending} package(s) pending upgrade); "
-			"run 'sudo apt-get update && sudo apt-get full-upgrade' first, or pass --allow-outdated"
+			"run 'sudo apt update && sudo apt full-upgrade' first, or pass --allow-outdated"
 		)
 	print("system is up to date (0 pending upgrades)")
 
