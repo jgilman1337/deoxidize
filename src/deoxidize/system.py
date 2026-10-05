@@ -5,6 +5,7 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from .model import DeoxidizeError
@@ -31,21 +32,32 @@ class System:
 		"""Print a command; raise instead of running when in dry-run mode."""
 		print(f"[dry-run] would run: {shlex.join(cmd)}")
 
-	def run(self, cmd: list[str], allow_fail: bool = False) -> bool:
-		"""Run a system command, honoring dry-run. Returns success."""
+	def run(self, cmd: list[str], allow_fail: bool = False, quiet: bool = False) -> bool:
+		"""Run a system command, honoring dry-run. Returns success.
+
+		quiet=True captures the command's output instead of streaming it;
+		a failure still prints what was captured so errors stay debuggable.
+		"""
 		# Dry-run announces and reports success without touching the system.
 		if self.dry_run:
 			self._announce(cmd)
 			return True
-		result = subprocess.run(cmd, check=False)
+		# Quiet mode swallows success output; failures are printed below.
+		if quiet:
+			result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+			if result.returncode != 0:
+				print(result.stdout, end="")
+				print(result.stderr, end="", file=sys.stderr)
+		else:
+			result = subprocess.run(cmd, check=False)
 		# allow_fail callers (verification, unhold) handle failure themselves.
 		if result.returncode != 0 and not allow_fail:
 			raise DeoxidizeError(f"command failed ({result.returncode}): {shlex.join(cmd)}")
 		return result.returncode == 0
 
-	def apt_get(self, *args: str, allow_fail: bool = False) -> bool:
+	def apt_get(self, *args: str, allow_fail: bool = False, quiet: bool = False) -> bool:
 		"""Run apt-get with the shared noninteractive dpkg options."""
-		return self.run(["apt-get", "-y", *self.dpkg_opts, *args], allow_fail=allow_fail)
+		return self.run(["apt-get", "-y", *self.dpkg_opts, *args], allow_fail=allow_fail, quiet=quiet)
 
 	def apt_install(self, *pkgs: str) -> bool:
 		"""Install packages without recommends; prefers apt(8) if present."""
