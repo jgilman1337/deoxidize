@@ -91,6 +91,15 @@ expected = "GNU coreutils"
 
 **`[[alternatives]]`** — optional; re-points `update-alternatives` master links after the swap so binaries routed through alternatives (e.g. `/usr/bin/sudo` on Ubuntu 25.10+) actually select the GNU path. `apply` is the registered path to `--set` when applying; `rollback` is the path to `--set` when rolling back (omit to leave the group alone). Groups or paths missing on a given system are skipped with a note, not an error. `[swap]` also takes an optional **`ensure`** list: packages installed (if missing) before any surgery runs, as a bootstrapping safety net — the sudo deoxidizer declares `ensure = ["sudo"]` so a root-capable binary stays present throughout the run.
 
+**`[post_install]`** — optional; declarative commands run after the deoxidizer's apply steps finish (swap, pins, alternatives), always — including on idempotent re-runs. Commands are split like `verify.tests` (no shell interpolation; wrap in `sh -c '…'` for pipes/redirection). Best-effort: a failure prints a loud warning but does not fail the run, since the swap itself has already succeeded. The coreutils deoxidizer uses it to restore the `ubuntu-minimal` metapackage when the uutils removal drops it:
+
+```toml
+[post_install]
+commands = [
+	"apt install --no-install-recommends ubuntu-minimal",
+]
+```
+
 ```toml
 [[alternatives]]
 name = "sudo"                      # master link (e.g. /usr/bin/sudo)
@@ -156,7 +165,7 @@ ALLOW_REMOVE_ESSENTIAL=0 sudo ./deoxidize.sh   # aborts when Essential removal w
 
 **`ubuntu-minimal`** is a **metapackage**: almost no files; it **Depends** on a curated minimal set so upgrades can pull new “minimal Ubuntu” pieces. **`ubuntu-server-minimal`** is similar for server images.
 
-If your only dependency on those metas was the rust stack, step **4** may **remove** them. Your actual utilities (**`coreutils-from-gnu`**, **`sudo`**, etc.) stay. You can **`sudo apt install --no-install-recommends ubuntu-minimal`** later if you want the metapackage back for tracking—always **`apt install -s …`** first.
+If your only dependency on those metas was the rust stack, step **4** may **remove** them. Your actual utilities (**`coreutils-from-gnu`**, **`sudo`**, etc.) stay. The coreutils deoxidizer's **`[post_install]`** command reinstalls **`ubuntu-minimal`** automatically after the swap (`apt install --no-install-recommends ubuntu-minimal`, best-effort — a failure warns without failing the run). You can always check first with **`apt install -s …`**.
 
 ---
 

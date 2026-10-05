@@ -67,6 +67,16 @@ class Alternative:
 
 
 @dataclass
+class PostInstall:
+	"""A command to run after the deoxidizer's apply steps finish."""
+
+	# Command argument list, already split (no shell interpolation).
+	command: list[str]
+	# Raw command string, for display and --list output.
+	raw: str
+
+
+@dataclass
 class Deoxidizer:
 	"""One declarative de-Rusting definition loaded from TOML."""
 
@@ -85,6 +95,8 @@ class Deoxidizer:
 	verify_tests: list[VerifyTest] = field(default_factory=list)
 	# update-alternatives groups to re-point after the swap (and on rollback).
 	alternatives: list[Alternative] = field(default_factory=list)
+	# Commands to run after the apply steps finish (best-effort).
+	post_install: list[PostInstall] = field(default_factory=list)
 	# Source path, for error messages and --list output.
 	path: Path = field(default_factory=Path)
 

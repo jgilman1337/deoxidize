@@ -33,3 +33,11 @@ binaries = ["ls"]
 [[verify.tests]]
 command = "ls --version"
 expected = "GNU coreutils"
+
+# Removing the uutils provider can drop the ubuntu-minimal metapackage
+# (nothing else depends on it once the rust stack is gone). Reinstall it
+# without recommends so it keeps tracking the curated minimal set.
+[post_install]
+commands = [
+	"apt install --no-install-recommends ubuntu-minimal",
+]

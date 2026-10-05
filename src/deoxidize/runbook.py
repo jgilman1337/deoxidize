@@ -27,6 +27,21 @@ def apply_alternatives(sys_: System, d: Deoxidizer) -> None:
 		sys_.set_alternative(alt.name, alt.apply)
 
 
+def run_post_install(sys_: System, d: Deoxidizer) -> None:
+	"""Run the deoxidizer's declarative post-install commands, best-effort.
+
+	The swap and pins have already succeeded by this point, so an auxiliary
+	command failing (e.g. a metapackage restore) warns instead of failing
+	the run — the admin sees it and can re-run or fix manually.
+	"""
+	for post in d.post_install:
+		print(f"[{d.name}] post-install: {post.raw}")
+		try:
+			sys_.run(post.command)
+		except DeoxidizeError as exc:
+			print(f"warning: post-install command failed: {exc}")
+
+
 def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 	"""Apply one deoxidizer's swap (if any) and remove leftover targets."""
 	if not d.swap:
@@ -59,6 +74,8 @@ def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 
 	# The swap is done: make sure the alternatives group selects the GNU path.
 	apply_alternatives(sys_, d)
+	# Auxiliary declarative commands (e.g. metapackage restoration) run last.
+	run_post_install(sys_, d)
 
 
 def verify_deoxidizer(sys_: System, d: Deoxidizer, pref_dir: Path) -> bool:
@@ -197,6 +214,4 @@ def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref
 		print("error: one or more verifications FAILED", file=sys.stderr)
 
 	print("done. To allow the blocked stacks again: rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && apt-get update")
-	# Metapackage restoration hint (policy detail, not engine logic).
-	print("If ubuntu-minimal was removed: sudo apt install --no-install-recommends ubuntu-minimal")
 	return all_ok

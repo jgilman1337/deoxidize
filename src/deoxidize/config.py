@@ -8,7 +8,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from .model import Alternative, Block, DeoxidizeError, Deoxidizer, Swap, VerifyTest
+from .model import Alternative, Block, DeoxidizeError, Deoxidizer, PostInstall, Swap, VerifyTest
 
 VALID_PIN_PHASES = ("early", "post_swap")
 
@@ -85,6 +85,26 @@ def _parse_alternatives(tables: list[dict], path: Path) -> list[Alternative]:
 	return alts
 
 
+def _parse_post_install(table: dict, path: Path) -> list[PostInstall]:
+	"""Parse and validate the optional [post_install] table into PostInstalls."""
+	commands = table.get("commands", [])
+	# A [post_install] table without commands is a configuration mistake.
+	if not commands:
+		raise DeoxidizeError(f"{path}: post_install needs a non-empty 'commands' list")
+	posts: list[PostInstall] = []
+	for i, raw in enumerate(commands):
+		# Split now (no shell interpolation at run time); bad quoting is a
+		# config error, not a runtime surprise. Wrap in 'sh -c' for pipes.
+		try:
+			command = shlex.split(str(raw))
+		except ValueError as exc:
+			raise DeoxidizeError(f"{path}: post_install.commands[{i}]: {exc}") from exc
+		if not command:
+			raise DeoxidizeError(f"{path}: post_install.commands[{i}] is empty")
+		posts.append(PostInstall(command=command, raw=str(raw)))
+	return posts
+
+
 def load_deoxidizer(path: Path) -> Deoxidizer:
 	"""Load one deoxidizer TOML file, validating structure and required keys."""
 	# Read + parse the TOML first so syntax errors point at the file.
@@ -125,6 +145,8 @@ def load_deoxidizer(path: Path) -> Deoxidizer:
 	tests = _parse_verify_tests(verify.get("tests", []), path)
 	# [[alternatives]] entries re-point update-alternatives groups.
 	alts = _parse_alternatives(data.get("alternatives", []), path)
+	# [post_install] commands run after the apply steps finish.
+	posts = _parse_post_install(data["post_install"], path) if "post_install" in data else []
 
 	# A block-only deoxidizer must block something in at least one phase.
 	if not swap and not post_swap_block and not early_block.packages:
@@ -139,6 +161,7 @@ def load_deoxidizer(path: Path) -> Deoxidizer:
 		verify_binaries=binaries,
 		verify_tests=tests,
 		alternatives=alts,
+		post_install=posts,
 		path=path,
 	)
 

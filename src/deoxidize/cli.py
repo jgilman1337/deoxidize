@@ -156,6 +156,8 @@ def main(argv: list[str]) -> int:
 				if alt.rollback:
 					line += f" (rollback: {alt.rollback})"
 				print(line)
+			for post in d.post_install:
+				print(f"  post-install: {post.raw}")
 			if d.verify_binaries or d.verify_tests:
 				print(f"  verify: {len(d.verify_binaries)} binary check(s), {len(d.verify_tests)} output test(s)")
 			print(f"  source: {d.path}")
