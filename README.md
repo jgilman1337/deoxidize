@@ -2,7 +2,53 @@
 
 Bash helper for **Debian/Ubuntu-style** systems that **prefer GNU `coreutils` and GNU `sudo`** over the Rust-based stack Ubuntu has been moving toward (`coreutils-from-uutils`, `rust-coreutils`, `sudo-rs`).
 
-**Quick start:** `chmod +x deoxidize.sh` then `sudo ./deoxidize.sh` from a root-capable session (local console or a shell where `sudo` still works). Read the script first; removing rust stack packages can pull **`ubuntu-minimal`** / **`ubuntu-server-minimal`** if nothing else keeps them installed.
+## Python engine (new)
+
+**`deoxidize`** is the data-driven successor to `deoxidize.sh`: stdlib-only Python 3.11+ (no pip, no venv; **uv** works fine if you want a managed interpreter). All package policy lives in **`deoxidizers/*.toml`** — the engine has no package names in it. A deoxidizer declares what to **block** (APT pin), what to **swap in** (single-transaction install+remove), and which **binaries to verify** afterwards.
+
+```bash
+./deoxidize --list              # show loaded deoxidizers, no root needed
+sudo ./deoxidize --dry-run      # print the full plan, change nothing
+sudo ./deoxidize                # apply (same staged-pin order as deoxidize.sh)
+sudo ./deoxidize --autoremove   # also run apt-get autoremove at the end
+sudo ./deoxidize --no-allow-remove-essential   # abort instead of removing Essential pkgs
+```
+
+| Flag | Env fallback | Meaning |
+|------|--------------|---------|
+| `-n` / `--dry-run` | `DRY_RUN=1` | Print planned pins/commands; write nothing, run nothing. Assumes worst case (blocked packages installed) so the plan is complete. |
+| `-a` / `--autoremove` | `AUTOREMOVE=1` | Run `apt-get autoremove` (step 5). Default off — old kernel headers/modules lines are safe but alarming. |
+| `--allow-remove-essential` / `--no-…` | `ALLOW_REMOVE_ESSENTIAL=0` | Permit removing Essential packages (uutils is Essential=yes). |
+| `--deoxidizers-dir` | — | Alternate TOML directory (default: `./deoxidizers` next to the script). |
+| `--pref-dir` | — | Alternate APT preferences directory (default: `/etc/apt/preferences.d`). Useful for testing. |
+
+Pins are written per deoxidizer as `/etc/apt/preferences.d/99-deoxidize-<name>.pref`; undo with `sudo rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && sudo apt-get update`. If the legacy `99-block-sudo-rs-rust-coreutils.pref` is still present, the engine warns — remove it to keep undo simple.
+
+**Deoxidizer format** (`deoxidizers/rust-coreutils.toml`):
+
+```toml
+[meta]
+name = "rust-coreutils"
+
+[block]                       # pinned BEFORE surgery
+packages = ["sudo-rs", "rust-coreutils"]
+pin_phase = "early"
+
+[swap]
+install = ["coreutils-from-gnu"]
+remove = ["coreutils-from-uutils"]
+essential = true              # needs --allow-remove-essential
+fallback = ["coreutils"]
+
+[block.deferred]              # pinned only AFTER the swap lands
+packages = ["coreutils-from-uutils"]
+pin_phase = "post_swap"
+
+[verify]
+binaries = ["sudo", "ls"]
+```
+
+**`deoxidize.sh` is kept as the frozen legacy implementation** until the Python engine has survived one real upgrade cycle.
 
 ---
 

@@ -1,0 +1,30 @@
+# Deoxidizer: prefer GNU coreutils and GNU sudo over the Rust stack.
+# See deoxidize.sh (legacy) and README.md for the full rationale.
+[meta]
+name = "rust-coreutils"
+description = "GNU coreutils and sudo over sudo-rs / rust-coreutils / uutils"
+
+# sudo-rs and rust-coreutils are pinned BEFORE any package surgery.
+# coreutils-from-uutils is NOT pinned here on purpose: pinning it early can
+# confuse APT into selecting both providers (impossible Conflicts).
+[block]
+packages = ["sudo-rs", "rust-coreutils"]
+pin_phase = "early"
+
+# One same-transaction swap: install GNU, remove uutils (trailing "-" in the
+# engine). uutils is Essential=yes on Ubuntu, so this needs
+# --allow-remove-essential. Falls back to the legacy coreutils metapackage
+# if the provider swap fails.
+[swap]
+install = ["coreutils-from-gnu"]
+remove = ["coreutils-from-uutils"]
+essential = true
+fallback = ["coreutils"]
+
+# Deferred pin: only safe to write after GNU coreutils is in place.
+[block.deferred]
+packages = ["coreutils-from-uutils"]
+pin_phase = "post_swap"
+
+[verify]
+binaries = ["sudo", "ls"]
