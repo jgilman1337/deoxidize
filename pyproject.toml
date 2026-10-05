@@ -1,0 +1,32 @@
+[project]
+name = "deoxidize"
+version = "2.0.0"
+description = "Prefer GNU coreutils/sudo (and other baselines) over Rust replacements on Debian/Ubuntu, via staged APT pins and declarative TOML deoxidizers."
+readme = "README.md"
+requires-python = ">=3.11"
+# Runtime is stdlib-only by design (tomllib, argparse, subprocess).
+# Dev tooling lives in [dependency-groups] below — run via `uv run <tool>`.
+dependencies = []
+
+# Development dependencies — run via `uv run <tool>`
+[dependency-groups]
+dev = [
+	"pyright>=1.1.390",
+	"pytest>=8.0.0",
+	"ruff>=0.11.0",
+]
+
+# Pyright config lives in pyrightconfig.json (single source of truth).
+
+[tool.ruff]
+target-version = "py311"
+line-length = 128
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "N"]
+ignore = ["W191"] # Disabled to allow for usage of indentation with tabs
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"
+line-ending = "auto"

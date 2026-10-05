@@ -1,0 +1,43 @@
+# Deoxidizer: GNU coreutils over the Rust uutils stack.
+# See deoxidize.sh (legacy) and README.md for the full rationale.
+[meta]
+name = "coreutils"
+description = "GNU coreutils over rust-coreutils / coreutils-from-uutils"
+
+# rust-coreutils is pinned BEFORE any package surgery.
+# coreutils-from-uutils is NOT pinned here on purpose: pinning it early can
+# confuse APT into selecting both providers (impossible Conflicts).
+[block]
+packages = ["rust-coreutils"]
+pin_phase = "early"
+
+# One same-transaction swap: install GNU, remove uutils (trailing "-" in the
+# engine). uutils is Essential=yes on Ubuntu, so this needs
+# --allow-remove-essential. Falls back to the legacy coreutils metapackage
+# if the provider swap fails.
+[swap]
+install = ["coreutils-from-gnu"]
+remove = ["coreutils-from-uutils"]
+essential = true
+fallback = ["coreutils"]
+
+# Deferred pin: only safe to write after GNU coreutils is in place.
+[block.deferred]
+packages = ["coreutils-from-uutils"]
+pin_phase = "post_swap"
+
+[verify]
+binaries = ["ls"]
+
+# ls must report GNU, not uutils (same check as legacy deoxidize.sh's grep).
+[[verify.tests]]
+command = "ls --version"
+expected = "GNU coreutils"
+
+# Removing the uutils provider can drop the ubuntu-minimal metapackage
+# (nothing else depends on it once the rust stack is gone). Reinstall it
+# without recommends so it keeps tracking the curated minimal set.
+[post_install]
+commands = [
+	"apt install --no-install-recommends ubuntu-minimal",
+]

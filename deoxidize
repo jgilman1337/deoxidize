@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Ergonomic entry point: execs the src/deoxidize package so the tool stays
+`./deoxidize` from the repo root.
+"""
+
+import os
+import runpy
+import sys
+
+# Make the src/ layout importable, then run the package's __main__.
+src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+sys.path.insert(0, src)
+runpy.run_module("deoxidize", run_name="__main__")

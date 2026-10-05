@@ -1,0 +1,39 @@
+# Deoxidizer: GNU sudo over sudo-rs.
+[meta]
+name = "sudo"
+description = "GNU sudo over sudo-rs"
+
+# Pin sudo-rs out of the archive before anything touches sudo.
+[block]
+packages = ["sudo-rs"]
+pin_phase = "early"
+
+# Reinstall GNU sudo in case sudo-rs replaced it; nothing to remove here
+# (step 4-style leftover cleanup handles an installed sudo-rs).
+[swap]
+install = ["sudo"]
+remove = ["sudo-rs"]
+essential = false
+# Keep a working root-capable binary on the system before any surgery runs.
+ensure = ["sudo"]
+# Staged order: install GNU sudo, re-point alternatives while both binaries
+# are registered, THEN remove sudo-rs — /usr/bin/sudo never goes dangling.
+staged = true
+
+[verify]
+binaries = ["sudo"]
+
+# sudo must report classic Sudo, not sudo-rs (same grep as legacy tooling).
+[[verify.tests]]
+command = "sudo --version"
+expected = "^Sudo version"
+
+# Ubuntu 25.10+ routes /usr/bin/sudo through update-alternatives: the GNU
+# sudo package registers /usr/bin/sudo.ws and sudo-rs registers
+# /usr/lib/cargo/bin/sudo. The swap alone does not change the selection,
+# so the group is re-pointed at the GNU path (and back on rollback).
+[[alternatives]]
+name = "sudo"
+apply = "/usr/bin/sudo.ws"
+rollback = "/usr/lib/cargo/bin/sudo"
+
