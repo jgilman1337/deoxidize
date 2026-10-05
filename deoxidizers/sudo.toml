@@ -1,0 +1,24 @@
+# Deoxidizer: GNU sudo over sudo-rs.
+[meta]
+name = "sudo"
+description = "GNU sudo over sudo-rs"
+
+# Pin sudo-rs out of the archive before anything touches sudo.
+[block]
+packages = ["sudo-rs"]
+pin_phase = "early"
+
+# Reinstall GNU sudo in case sudo-rs replaced it; nothing to remove here
+# (step 4-style leftover cleanup handles an installed sudo-rs).
+[swap]
+install = ["sudo"]
+remove = []
+essential = false
+
+[verify]
+binaries = ["sudo"]
+
+# sudo must report classic Sudo, not sudo-rs (same grep as legacy tooling).
+[[verify.tests]]
+command = "sudo --version"
+expected = "^Sudo version"

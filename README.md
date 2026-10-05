@@ -24,14 +24,17 @@ sudo ./deoxidize --no-allow-remove-essential   # abort instead of removing Essen
 
 Pins are written per deoxidizer as `/etc/apt/preferences.d/99-deoxidize-<name>.pref`; undo with `sudo rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && sudo apt-get update`. If the legacy `99-block-sudo-rs-rust-coreutils.pref` is still present, the engine warns — remove it to keep undo simple.
 
-**Deoxidizer format** (`deoxidizers/rust-coreutils.toml`):
+**Deoxidizer format** — one TOML per target; current definitions:
+
+- `deoxidizers/coreutils.toml` — GNU `coreutils` over `rust-coreutils`/`coreutils-from-uutils`
+- `deoxidizers/sudo.toml` — GNU `sudo` over `sudo-rs`
 
 ```toml
 [meta]
-name = "rust-coreutils"
+name = "coreutils"
 
 [block]                       # pinned BEFORE surgery
-packages = ["sudo-rs", "rust-coreutils"]
+packages = ["rust-coreutils"]
 pin_phase = "early"
 
 [swap]
@@ -45,7 +48,13 @@ packages = ["coreutils-from-uutils"]
 pin_phase = "post_swap"
 
 [verify]
-binaries = ["sudo", "ls"]
+binaries = ["ls"]
+
+# Output test: command output must match the regex (MULTILINE|DOTALL;
+# triple-quoted strings allow multiline patterns). Any FAIL -> exit 1.
+[[verify.tests]]
+command = "ls --version"
+expected = "GNU coreutils"
 ```
 
 **`deoxidize.sh` is kept as the frozen legacy implementation** until the Python engine has survived one real upgrade cycle.
