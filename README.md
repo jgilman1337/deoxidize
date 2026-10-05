@@ -199,6 +199,12 @@ This section mixes **stated project goals** with **cited, checkable facts**. The
 - **Reported performance regressions** (some later improved; the pattern is “not always a free win”) appear in public issues, e.g. large-file `base64` / `cksum` benchmarks: [#8574](https://github.com/uutils/coreutils/issues/8574), [#8573](https://github.com/uutils/coreutils/issues/8573); `ls -R /proc`: [#10662](https://github.com/uutils/coreutils/issues/10662); long-standing `factor`: [#1456](https://github.com/uutils/coreutils/issues/1456).
 - **Ubuntu packaging context** (what `rust-coreutils` vs `coreutils-from-uutils` means on PATH, conflicts, switching): [Ask Ubuntu — difference between the two packages](https://askubuntu.com/questions/1564348/what-is-the-difference-between-coreutils-from-uutils-and-rust-coreutils).
 
+### 94.74% parity means 5% divergence — and 5% is unacceptable here
+
+uutils upstream reports **94.74% GNU test-suite parity** for 0.8.0 (630 of 665 tests passing against GNU 9.10) — the release Ubuntu 26.04 LTS ships as its **default userland** ([ComputingForGeeks guide](https://computingforgeeks.com/ubuntu-2604-rust-coreutils-guide/)). Read honestly, that is not "95% of GNU." It is a standing **1-in-20 chance that any given behavior of any given command differs** from what decades of scripts, vendor runbooks, documentation, and muscle memory assume. And the documented divergences are exactly the kind that surface in production rather than demos: `uname -p` returning `unknown` instead of the processor type, `stat` relabeling `Size:` to `size:` so case-sensitive parsers silently match nothing, `env -S` rejecting C-style escape sequences some shebangs rely on, `sort` collation differences in non-POSIX locales, a different `dd status=progress` update cadence. Canonical itself judged uutils `cp`, `mv`, and `rm` — with **eight unresolved TOCTOU races** between them — too data-destructive for an LTS and carved them back out to GNU.
+
+The payoff for absorbing that risk is small. The guide's own benchmarks are a wash: uutils wins `cat` (2.3x, via a `splice()` fast path) and `sort` (~12%); GNU wins `sha256sum` (2.3x, via hand-tuned assembly). What remains as justification is **better DX and the elimination of memory-corruption vulnerability classes** — real, but modest gains against **uprooting decades of stability and familiarity**. Even the memory-safety argument is weaker than advertised: Canonical's Zellic audit of uutils found **113 issues, 41 of them CVE-worthy** — memory safety does not buy logic-bug immunity, and the supply-chain surface grows to ~50 crates per binary. When the system is not failing today, trading a known, boring, universal baseline for that package deal fails the burden-of-proof test above.
+
 ### `sudo-rs`
 
 - **Security fixes have shipped for logic bugs**, not “only C memory issues”: Ubuntu documents issues such as mishandled passwords on timeout / `pwfeedback` interaction and timestamp handling: [USN-7867-1: sudo-rs vulnerabilities](https://ubuntu.com/security/notices/USN-7867-1).
@@ -256,6 +262,7 @@ Always review what APT plans to pull in (`apt-cache policy`, `apt install -s …
 6. Ask Ubuntu — rationale discussion for Ubuntu’s direction: https://askubuntu.com/questions/1564801/why-did-ubuntu-switch-from-gnu-coreutils-to-uutils  
 7. uutils/coreutils — performance / parity issues (examples): [#8574](https://github.com/uutils/coreutils/issues/8574), [#8573](https://github.com/uutils/coreutils/issues/8573), [#10662](https://github.com/uutils/coreutils/issues/10662), [#1456](https://github.com/uutils/coreutils/issues/1456)  
 8. Heise (English) — coverage article citing GNU test suite pass rate for a release line: https://www.heise.de/en/news/Rust-Coreutils-0-6-reaches-96-percent-GNU-compatibility-11163476.html  
+9. ComputingForGeeks — Ubuntu 26.04 Rust Coreutils guide (94.74% parity for 0.8.0, documented divergences, benchmarks, Zellic audit findings): https://computingforgeeks.com/ubuntu-2604-rust-coreutils-guide/
 
 ---
 
