@@ -1,6 +1,6 @@
 [project]
 name = "deoxidize"
-version = "0.1.0"
+version = "2.0.0"
 description = "Prefer GNU coreutils/sudo (and other baselines) over Rust replacements on Debian/Ubuntu, via staged APT pins and declarative TOML deoxidizers."
 readme = "README.md"
 requires-python = ">=3.11"
