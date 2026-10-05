@@ -1,5 +1,5 @@
 {
-	"include": ["deoxidize.py", "deoxidize"],
+	"include": ["src"],
 	"exclude": ["**/.venv", "build", "dist"],
 	"venvPath": ".",
 	"venv": ".venv",

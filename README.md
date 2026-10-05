@@ -19,7 +19,19 @@ sudo ./deoxidize --skip sudo          # everything except sudo
 
 ## Python engine
 
-**`deoxidize`** (shim → `deoxidize.py`) is stdlib-only Python 3.11+ — no pip install, no runtime dependencies. All package policy lives in **`deoxidizers/*.toml`**; the engine has no package names in it. A deoxidizer declares what to **block** (APT pin), what to **swap in** (single-transaction install+remove), and how to **verify** (binary ownership + regex output tests).
+**`deoxidize`** (shim → the `src/deoxidize` package) is stdlib-only Python 3.11+ — no pip install, no runtime dependencies. All package policy lives in **`deoxidizers/*.toml`**; the engine has no package names in it. A deoxidizer declares what to **block** (APT pin), what to **swap in** (single-transaction install+remove), and how to **verify** (binary ownership + regex output tests).
+
+```
+src/deoxidize/
+├── model.py      # dataclasses: Block, Swap, VerifyTest, Deoxidizer
+├── config.py     # TOML loading/validation, --only/--skip selection
+├── pins.py       # APT preferences rendering + writing
+├── system.py     # apt/dpkg subprocess plumbing, dry-run support
+├── runbook.py    # the staged step 1-8 execution plan
+└── cli.py        # argument parsing, entry point
+deoxidizers/      # declarative deoxidizer definitions (TOML)
+legacy/           # frozen deoxidize.sh + notes, kept for reference
+```
 
 ```bash
 ./deoxidize --list              # show loaded deoxidizers, no root needed

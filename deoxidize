@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Ergonomic entry point: execs deoxidize.py so the tool stays `./deoxidize`.
-
-The engine lives in deoxidize.py (a .py filename keeps ruff/pyright happy);
-this shim just forwards to it.
+"""Ergonomic entry point: execs the src/deoxidize package so the tool stays
+`./deoxidize` from the repo root.
 """
 
 import os
 import runpy
+import sys
 
-script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deoxidize.py")
-runpy.run_path(script, run_name="__main__")
+# Make the src/ layout importable, then run the package's __main__.
+src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+sys.path.insert(0, src)
+runpy.run_module("deoxidize", run_name="__main__")

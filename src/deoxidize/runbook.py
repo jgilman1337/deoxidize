@@ -1,0 +1,163 @@
+"""The staged runbook: the former deoxidize.sh step 1-8 sequence."""
+
+from __future__ import annotations
+
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from .model import DeoxidizeError, Deoxidizer
+from .pins import write_pin_files
+from .system import LEGACY_PREF_FILE, System
+
+
+def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
+	"""Apply one deoxidizer's swap (if any) and remove leftover targets."""
+	if not d.swap:
+		return
+	swap = d.swap
+	# Skip the swap entirely when the replacement is already installed and
+	# nothing blocked remains — the idempotent re-run case.
+	remaining = [p for p in swap.remove if sys_.package_installed(p)]
+	if not remaining:
+		print(f"[{d.name}] nothing to swap; replacement already in place")
+		return
+	print(f"[{d.name}] swapping to {', '.join(swap.install)} (removing {', '.join(remaining)})")
+	if not sys_.swap(swap.install, remaining, swap.essential):
+		# Primary swap failed: try the fallback metapackage before giving up.
+		if not swap.fallback:
+			raise DeoxidizeError(f"[{d.name}] swap failed and no fallback is defined")
+		print(f"[{d.name}] swap failed; installing legacy fallback {', '.join(swap.fallback)}")
+		sys_.apt_install(*swap.fallback)
+
+	# Remove any still-installed blocked packages (metapackage transitions).
+	leftovers = [p for p in d.blocked_packages if sys_.package_installed(p)]
+	if leftovers:
+		print(f"[{d.name}] removing leftovers: {', '.join(leftovers)}")
+		sys_.apt_get("remove", "--allow-remove-essential", *leftovers) if swap.essential else sys_.apt_get("remove", *leftovers)
+
+
+def verify_deoxidizer(sys_: System, d: Deoxidizer, pref_dir: Path) -> bool:
+	"""Print post-run evidence: pin state, apt policy, binary ownership, tests.
+
+	Returns True when every verification passed.
+	"""
+	print(f"--- [{d.name}] verification ---")
+	ok = True
+
+	# Show the pin file content so the admin sees exactly what is enforced.
+	if not sys_.dry_run:
+		pin = pref_dir / f"99-deoxidize-{d.name}.pref"
+		if pin.exists():
+			print(f"--- {pin} ---")
+			print(pin.read_text(encoding="utf-8"), end="")
+
+	# apt-cache policy is the ground truth for whether pins took effect.
+	if d.blocked_packages and not sys_.dry_run:
+		sys_.run(["apt-cache", "policy", *d.blocked_packages], allow_fail=True)
+
+	# Verify each expected binary exists and is owned by a package.
+	for binary in d.verify_binaries:
+		# Locate the binary on PATH; note it but do not fail if absent.
+		resolved = shutil.which(binary)
+		if not resolved:
+			print(f"note: {binary} not found on PATH")
+			continue
+		print(f"{binary}: {resolved}")
+		if sys_.dry_run:
+			continue
+		# dpkg -S identifies the owning package; alternatives symlinks need
+		# a resolved-realpath retry (same logic as deoxidize.sh).
+		owner = subprocess.run(["dpkg", "-S", resolved], capture_output=True, text=True, check=False)
+		if owner.returncode == 0:
+			print(owner.stdout.strip())
+			continue
+		real = Path(resolved).resolve()
+		if real != Path(resolved):
+			owner = subprocess.run(["dpkg", "-S", str(real)], capture_output=True, text=True, check=False)
+			if owner.returncode == 0:
+				print(owner.stdout.strip())
+				continue
+		print(f"(no single deb owns path for {binary}: {resolved}; try: dpkg -L {binary})")
+
+	# Run the output tests: each command's output must match its pattern.
+	for t in d.verify_tests:
+		label = f"{shlex.join(t.command)} ~ /{t.pattern}/"
+		# Dry-run announces the test without executing anything.
+		if sys_.dry_run:
+			print(f"[dry-run] would run: {label}")
+			continue
+		result = subprocess.run(t.command, capture_output=True, text=True, check=False)
+		output = result.stdout + result.stderr
+		# A crashing command cannot satisfy its pattern: fail with context.
+		if result.returncode != 0:
+			print(f"FAIL: {label} (exit {result.returncode})")
+			ok = False
+			continue
+		# Pattern match on the combined output decides pass/fail.
+		if t.expected.search(output):
+			print(f"PASS: {label}")
+		else:
+			print(f"FAIL: {label}")
+			# Show a short head of actual output to ease debugging.
+			head = " | ".join(output.splitlines()[:3])
+			print(f"      output head: {head if head else '(no output)'}")
+			ok = False
+	return ok
+
+
+def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref_dir: Path) -> bool:
+	"""Execute the full staged runbook, mirroring deoxidize.sh's ordering."""
+	# Warn about the legacy bash-era pin file so undo instructions stay sane.
+	if not sys_.dry_run and Path(LEGACY_PREF_FILE).exists():
+		print(f"note: legacy pin file {LEGACY_PREF_FILE} exists; consider removing it")
+
+	print("=== 1) APT preferences (early pins; deferred pins come later) ===")
+	early = [d for d in deoxidizers if d.early_block.packages]
+	write_pin_files(early, pref_dir, dry_run=sys_.dry_run, full=False)
+
+	print("=== 2) Refresh package lists ===")
+	sys_.apt_get("update")
+
+	print("=== 3) Ensure GNU sudo is present before touching replacements ===")
+	sys_.apt_install("sudo")
+
+	print("=== 4) Apply swaps and remove Rust replacements ===")
+	for d in deoxidizers:
+		apply_deoxidizer(sys_, d)
+
+	print("=== 4b) Full APT preferences (deferred pins; safe after swaps) ===")
+	write_pin_files(deoxidizers, pref_dir, dry_run=sys_.dry_run, full=True)
+	sys_.apt_get("update")
+
+	print("=== 5) Autoremove unused deps (opt-in) ===")
+	if autoremove:
+		# Old kernel headers/modules often show up here; safe but alarming.
+		sys_.apt_get("autoremove")
+	else:
+		print("Skipping autoremove (default). Enable with --autoremove or AUTOREMOVE=1.")
+
+	print("=== 6) Upgrade (GNU packages remain candidates) ===")
+	sys_.apt_get("full-upgrade")
+
+	print("=== 7) Ensure replacements are not on hold ===")
+	# Pins replace holds; unholding replacements is cleanup, best-effort.
+	if not sys_.dry_run:
+		for d in deoxidizers:
+			if d.replacement_packages:
+				sys_.run(["apt-mark", "unhold", *d.replacement_packages], allow_fail=True)
+
+	print("=== 8) Verify ===")
+	all_ok = True
+	for d in deoxidizers:
+		if not verify_deoxidizer(sys_, d, pref_dir):
+			all_ok = False
+	# Verification failures surface in the exit code for automation.
+	if not all_ok:
+		print("error: one or more verifications FAILED", file=sys.stderr)
+
+	print("done. To allow the blocked stacks again: rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && apt-get update")
+	print("If ubuntu-minimal was removed: sudo apt install --no-install-recommends ubuntu-minimal")
+	return all_ok
