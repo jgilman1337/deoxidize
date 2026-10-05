@@ -1,10 +1,25 @@
 # deoxidize
 
-Bash helper for **Debian/Ubuntu-style** systems that **prefer GNU `coreutils` and GNU `sudo`** over the Rust-based stack Ubuntu has been moving toward (`coreutils-from-uutils`, `rust-coreutils`, `sudo-rs`).
+Prefer **GNU `coreutils` and GNU `sudo`** (and other baselines) on **Debian/Ubuntu-style** systems over the Rust-based stack Ubuntu has been moving toward (`coreutils-from-uutils`, `rust-coreutils`, `sudo-rs`). Implemented as a **stdlib-only Python engine** with **declarative TOML deoxidizer definitions** — the legacy bash script is preserved under **`legacy/`**.
 
-## Python engine (new)
+**Quick start:** `sudo ./deoxidize` from a root-capable session (local console or a shell where `sudo` still works). Read the definitions first; removing rust stack packages can pull **`ubuntu-minimal`** / **`ubuntu-server-minimal`** if nothing else keeps them installed. Always `./deoxidize --dry-run` first.
 
-**`deoxidize`** is the data-driven successor to `deoxidize.sh`: stdlib-only Python 3.11+ (no pip, no venv; **uv** works fine if you want a managed interpreter). All package policy lives in **`deoxidizers/*.toml`** — the engine has no package names in it. A deoxidizer declares what to **block** (APT pin), what to **swap in** (single-transaction install+remove), and which **binaries to verify** afterwards.
+## Selective deoxidizing
+
+Run only part of the system — every definition is still loaded and validated, but only the selected ones execute:
+
+```bash
+./deoxidize --list                    # rich listing: blocks, swaps, verify, sources
+sudo ./deoxidize --only coreutils     # just the coreutils swap
+sudo ./deoxidize --only coreutils,sudo   # comma-separated
+sudo ./deoxidize --skip sudo          # everything except sudo
+```
+
+`--only`/`--skip` are comma-separated and repeatable; unknown names abort with the available list (`--only` wins if both are given).
+
+## Python engine
+
+**`deoxidize`** (shim → `deoxidize.py`) is stdlib-only Python 3.11+ — no pip install, no runtime dependencies. All package policy lives in **`deoxidizers/*.toml`**; the engine has no package names in it. A deoxidizer declares what to **block** (APT pin), what to **swap in** (single-transaction install+remove), and how to **verify** (binary ownership + regex output tests).
 
 ```bash
 ./deoxidize --list              # show loaded deoxidizers, no root needed
@@ -57,7 +72,11 @@ command = "ls --version"
 expected = "GNU coreutils"
 ```
 
-**`deoxidize.sh` is kept as the frozen legacy implementation** until the Python engine has survived one real upgrade cycle.
+**`deoxidize.sh` lives in `legacy/`** — kept frozen as the reference implementation until the Python engine has survived one real upgrade cycle.
+
+## Development
+
+Tooling runs through **uv** (no global installs): `./lint_n_fmt.sh` syncs the dev group and runs **ruff** (check + format) and **pyright**. Config is in `pyproject.toml` (`[tool.ruff]`, `[tool.pyright]`); the runtime stays stdlib-only, dev dependencies live in `[dependency-groups]`.
 
 ---
 
