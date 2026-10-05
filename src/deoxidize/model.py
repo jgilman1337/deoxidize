@@ -33,6 +33,9 @@ class Swap:
 	essential: bool = False
 	# Fallback packages (e.g. legacy metapackage) if the primary install fails.
 	fallback: list[str] = field(default_factory=list)
+	# Packages to make sure are installed BEFORE any surgery (bootstrapping
+	# safety net, e.g. keep a root shell working while swaps run).
+	ensure: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -55,7 +58,7 @@ class VerifyTest:
 class Alternative:
 	"""An update-alternatives master link to steer toward the GNU side."""
 
-	# Master link name (e.g. "sudo" for /usr/bin/sudo).
+	# Master link name (the symlink update-alternatives manages).
 	name: str
 	# Registered path to select with --set when applying (the GNU binary).
 	apply: str

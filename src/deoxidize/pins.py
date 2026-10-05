@@ -11,8 +11,8 @@ from .model import Deoxidizer
 def render_pin_file(deoxidizer: Deoxidizer, include_deferred: bool = True) -> str:
 	"""Render the APT preferences file body for one deoxidizer.
 
-	Early-phase writes must exclude deferred packages: pinning
-	coreutils-from-uutils before the swap breaks APT's provider resolution.
+	Early-phase writes must exclude deferred packages: pinning a blocked
+	provider before the swap breaks APT's provider resolution.
 	"""
 	# Header names the source definition so admins can trace the pin.
 	lines = [

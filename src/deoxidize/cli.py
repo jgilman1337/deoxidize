@@ -29,8 +29,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 	parser = argparse.ArgumentParser(
 		prog="deoxidize",
-		description="Prefer GNU coreutils/sudo (and other baselines) over Rust "
-		"replacements on Debian/Ubuntu, via staged APT pins.",
+		description="Prefer GNU/baseline userland packages over their Rust "
+		"replacements on Debian/Ubuntu, via staged APT pins. Package policy "
+		"lives in declarative TOML deoxidizer definitions.",
 	)
 	parser.add_argument(
 		"-n",
@@ -50,7 +51,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 		"--allow-remove-essential",
 		action=argparse.BooleanOptionalAction,
 		default=env_allow_essential,
-		help="permit removal of Essential packages such as coreutils-from-uutils (env: ALLOW_REMOVE_ESSENTIAL=0 to deny)",
+		help="permit removal of Essential packages, such as the blocked "
+		"provider a swap replaces (env: ALLOW_REMOVE_ESSENTIAL=0 to deny)",
 	)
 	parser.add_argument(
 		"-y",

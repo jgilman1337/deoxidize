@@ -111,7 +111,7 @@ class System:
 			text=True,
 			check=False,
 		)
-		# A missing group (e.g. sudo not alternatives-managed) is not an error.
+		# A missing group (e.g. a binary not alternatives-managed) is not an error.
 		if probe.returncode != 0:
 			print(f"note: no update-alternatives group {name!r}; nothing to select")
 			return True

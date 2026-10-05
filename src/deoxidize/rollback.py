@@ -57,8 +57,8 @@ def run_rollback(sys_: System, deoxidizers: list[Deoxidizer], pref_dir: Path) ->
 		# ALLOW_REMOVE_ESSENTIAL deliberately does not gate rollback: that
 		# flag guards the forward swap's uutils removal, not this direction.
 		sys_.swap(d.blocked_packages, installed, False)
-		# Re-point alternatives at the restored (rust) side so /usr/bin/sudo
-		# and friends follow the swap instead of staying on the GNU path.
+		# Re-point alternatives at the restored (rust) side so master links
+		# follow the swap instead of staying on the replacement's path.
 		for alt in d.alternatives:
 			if alt.rollback:
 				print(f"[{d.name}] update-alternatives --set {alt.name} {alt.rollback}")

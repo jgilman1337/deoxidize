@@ -36,6 +36,7 @@ def _parse_swap(table: dict, path: Path) -> Swap:
 		remove=list(table.get("remove", [])),
 		essential=bool(table.get("essential", False)),
 		fallback=list(table.get("fallback", [])),
+		ensure=list(table.get("ensure", [])),
 	)
 
 

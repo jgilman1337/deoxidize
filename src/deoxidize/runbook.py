@@ -143,8 +143,24 @@ def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref
 	print("=== 2) Refresh package lists ===")
 	sys_.apt_get("update")
 
-	print("=== 3) Ensure GNU sudo is present before touching replacements ===")
-	sys_.apt_install("sudo")
+	print("=== 3) Ensure declared bootstrap packages are present before surgery ===")
+	# Union of every deoxidizer's [swap] ensure list, in definition order.
+	ensure: list[str] = []
+	for d in deoxidizers:
+		if d.swap:
+			for pkg in d.swap.ensure:
+				if pkg not in ensure:
+					ensure.append(pkg)
+	if not ensure:
+		print("no bootstrap packages declared; skipping")
+	else:
+		# Real runs skip packages already installed; dry-run shows the full
+		# list so the preview stays complete (worst-case assumption).
+		needed = list(ensure) if sys_.dry_run else [p for p in ensure if not sys_.package_installed(p)]
+		if needed:
+			sys_.apt_install(*needed)
+		else:
+			print("bootstrap packages already present")
 
 	print("=== 4) Apply swaps and remove Rust replacements ===")
 	for d in deoxidizers:
@@ -181,5 +197,6 @@ def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref
 		print("error: one or more verifications FAILED", file=sys.stderr)
 
 	print("done. To allow the blocked stacks again: rm -f /etc/apt/preferences.d/99-deoxidize-*.pref && apt-get update")
+	# Metapackage restoration hint (policy detail, not engine logic).
 	print("If ubuntu-minimal was removed: sudo apt install --no-install-recommends ubuntu-minimal")
 	return all_ok

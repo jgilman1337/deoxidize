@@ -7,11 +7,12 @@ names; all policy lives in deoxidizers/*.toml.
 
 Protection is APT Pin-Priority -1 (blocked packages show Candidate: (none)).
 Pins are staged: "early" pins are written before any package surgery,
-"post_swap" pins only after replacements are in place (see the coreutils
-deoxidizer for why the uutils pin must be deferred).
+"post_swap" pins only after replacements are in place (see the deoxidizer
+definitions for why the deferred pin must wait).
 
 Run from a session where you still have root (console, su, or working sudo).
-Do not run over your only SSH link if you are unsure about sudo removal.
+Do not run over your only SSH link if you are unsure about removing your
+root-capable binary.
 
 Package layout:
 - model: dataclasses for the deoxidizer configuration model

@@ -43,7 +43,7 @@ def ensure_up_to_date(sys_: System) -> None:
 		else:
 			print("[dry-run] note: system is up to date")
 		return
-	# A real run must start from a fully upgraded system: swapping coreutils
+	# A real run must start from a fully upgraded system: swapping userland
 	# mid-upgrade invites partial states and pin/upgrade interactions.
 	if pending:
 		raise DeoxidizeError(

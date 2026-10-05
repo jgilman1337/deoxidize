@@ -73,6 +73,7 @@ install = ["coreutils-from-gnu"]
 remove = ["coreutils-from-uutils"]
 essential = true              # needs --allow-remove-essential
 fallback = ["coreutils"]
+ensure = []                   # bootstrap packages installed BEFORE any surgery
 
 [block.deferred]              # pinned only AFTER the swap lands
 packages = ["coreutils-from-uutils"]
@@ -88,7 +89,7 @@ command = "ls --version"
 expected = "GNU coreutils"
 ```
 
-**`[[alternatives]]`** — optional; re-points `update-alternatives` master links after the swap so binaries routed through alternatives (e.g. `/usr/bin/sudo` on Ubuntu 25.10+) actually select the GNU path. `apply` is the registered path to `--set` when applying; `rollback` is the path to `--set` when rolling back (omit to leave the group alone). Groups or paths missing on a given system are skipped with a note, not an error:
+**`[[alternatives]]`** — optional; re-points `update-alternatives` master links after the swap so binaries routed through alternatives (e.g. `/usr/bin/sudo` on Ubuntu 25.10+) actually select the GNU path. `apply` is the registered path to `--set` when applying; `rollback` is the path to `--set` when rolling back (omit to leave the group alone). Groups or paths missing on a given system are skipped with a note, not an error. `[swap]` also takes an optional **`ensure`** list: packages installed (if missing) before any surgery runs, as a bootstrapping safety net — the sudo deoxidizer declares `ensure = ["sudo"]` so a root-capable binary stays present throughout the run.
 
 ```toml
 [[alternatives]]
@@ -112,7 +113,7 @@ Tooling runs through **uv** (no global installs): `./lint_n_fmt.sh` syncs the de
 | **0** | **Pre-flight gates**: refresh package lists, then simulate `apt-get full-upgrade` and **abort unless the system is fully upgraded** (`--allow-outdated` waives this; dry-run warns instead). Then print the **full plan preview** — every pin file body and every APT command, exactly as they will be written/run — and ask **`Proceed? [y/N]`**. Anything but `y`/`yes` aborts with no changes (`--yes` skips the prompt; non-interactive stdin aborts unless `--yes`). |
 | **1** | Writes **early** APT preferences: **`Pin-Priority: -1`** for **`sudo-rs`** and **`rust-coreutils`** only. **`coreutils-from-uutils` is not pinned yet** so APT can replace it cleanly. |
 | **2** | **`apt-get update`** |
-| **3** | Ensures **`sudo`** (GNU), then swaps to **`coreutils-from-gnu`**. If **`coreutils-from-uutils`** is installed, uses **`apt install coreutils-from-gnu coreutils-from-uutils-`** in one transaction (trailing **`-`** = remove that package) plus **`--allow-remove-essential`** because uutils is **Essential** on Ubuntu. Falls back to the legacy **`coreutils`** metapackage if the swap fails. Uses **`apt`** when available, else **`apt-get`**. |
+| **3** | Installs every **`ensure`** package declared by the selected deoxidizers' `[swap]` tables (a bootstrapping safety net — e.g. keeping a root-capable binary present before any surgery), skipping ones already installed. Then applies swaps: if **`coreutils-from-uutils`** is installed, uses **`apt install coreutils-from-gnu coreutils-from-uutils-`** in one transaction (trailing **`-`** = remove that package) plus **`--allow-remove-essential`** because uutils is **Essential** on Ubuntu. Falls back to the legacy **`coreutils`** metapackage if the swap fails. Uses **`apt`** when available, else **`apt-get`**. |
 | **3b** | **`update-alternatives --set`** for each configured **`[[alternatives]]`** group (e.g. points **`sudo`** at **`/usr/bin/sudo.ws`**). Skipped with a note when the group or path does not exist on this system. |
 | **4** | Removes any still-installed **`sudo-rs`**, **`rust-coreutils`**, **`coreutils-from-uutils`** with **`apt-get --allow-remove-essential`** (metapackage transitions). Often empty after a successful step 3. |
 | **4b** | Writes **full** preferences (adds **`coreutils-from-uutils`** pin) and **`apt-get update`** again. |
