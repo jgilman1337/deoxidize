@@ -96,12 +96,19 @@ expected = "GNU coreutils"
 
 Note that **coreutils itself has no `[[alternatives]]` stanza on purpose**: Ubuntu does not route coreutils through `update-alternatives` at all — it uses the provider-package model, where the `coreutils` metapackage depends on exactly one provider and installing `coreutils-from-gnu` re-points the `/usr/bin/*` symlinks as part of the swap transaction. Only binaries actually registered with `update-alternatives` (e.g. `sudo` on 25.10+) need the stanza; the verify step's `readlink`/`dpkg -S` output confirms where the symlinks really resolve.
 
-**`[post_install]`** — optional; declarative commands run after the deoxidizer's apply steps finish (swap, pins, alternatives), always — including on idempotent re-runs. Commands are split like `verify.tests` (no shell interpolation; wrap in `sh -c '…'` for pipes/redirection) and must be **noninteractive** (`-y`, no prompts — their output is captured unless `-v`). Best-effort: a failure prints a loud warning but does not fail the run, since the swap itself has already succeeded. The coreutils deoxidizer uses it to restore the `ubuntu-minimal` metapackage when the uutils removal drops it:
+**`[[post_install]]`** — optional array of declarative commands run after the deoxidizer's apply steps finish (swap, pins, alternatives), always — including on idempotent re-runs. Commands are split like `verify.tests` (no shell interpolation; wrap in `sh -c '…'` for pipes/redirection) and must be **noninteractive** (`-y`, no prompts — their output is captured unless `-v`). Best-effort: a failure prints a loud warning but does not fail the run, since the swap itself has already succeeded. Entries take an optional **`when_installed`** gate: the commands run only when that package is on the system — checked **before any removal** so a package the swap removes still matches, and treating removed-with-conffiles records as present so re-runs restore the right variant. The coreutils deoxidizer uses two gated entries to restore whichever minimal metapackage the system tracks:
 
 ```toml
-[post_install]
+[[post_install]]
+when_installed = "ubuntu-server-minimal"
 commands = [
-	"apt -y install --no-install-recommends ubuntu-minimal",
+	"apt install --no-install-recommends -y ubuntu-server-minimal",
+]
+
+[[post_install]]
+when_installed = "ubuntu-minimal"
+commands = [
+	"apt install --no-install-recommends -y ubuntu-minimal",
 ]
 ```
 
@@ -170,7 +177,7 @@ ALLOW_REMOVE_ESSENTIAL=0 sudo ./deoxidize.sh   # aborts when Essential removal w
 
 **`ubuntu-minimal`** is a **metapackage**: almost no files; it **Depends** on a curated minimal set so upgrades can pull new “minimal Ubuntu” pieces. **`ubuntu-server-minimal`** is similar for server images.
 
-If your only dependency on those metas was the rust stack, step **4** may **remove** them. Your actual utilities (**`coreutils-from-gnu`**, **`sudo`**, etc.) stay. The coreutils deoxidizer's **`[post_install]`** command reinstalls **`ubuntu-minimal`** automatically after the swap (`apt -y install --no-install-recommends ubuntu-minimal`, best-effort — a failure warns without failing the run). You can always check first with **`apt install -s …`**.
+If your only dependency on those metas was the rust stack, step **4** may **remove** them. Your actual utilities (**`coreutils-from-gnu`**, **`sudo`**, etc.) stay. The coreutils deoxidizer's **`[[post_install]]`** entries reinstall whichever minimal metapackage the system tracks automatically after the swap (`ubuntu-server-minimal` on server installs, `ubuntu-minimal` otherwise — gated on the package being present before any removal, best-effort: a failure warns without failing the run). You can always check first with **`apt install -s …`**.
 
 ---
 

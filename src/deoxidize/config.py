@@ -86,23 +86,38 @@ def _parse_alternatives(tables: list[dict], path: Path) -> list[Alternative]:
 	return alts
 
 
-def _parse_post_install(table: dict, path: Path) -> list[PostInstall]:
-	"""Parse and validate the optional [post_install] table into PostInstalls."""
-	commands = table.get("commands", [])
-	# A [post_install] table without commands is a configuration mistake.
-	if not commands:
-		raise DeoxidizeError(f"{path}: post_install needs a non-empty 'commands' list")
+def _parse_post_install(entries: list[dict] | dict, path: Path) -> list[PostInstall]:
+	"""Parse and validate [[post_install]] entries into PostInstalls.
+
+	Accepts the array-of-tables form ([[post_install]]) and, for backward
+	compatibility, a single [post_install] table.
+	"""
+	# A single [post_install] table behaves as a one-entry list.
+	if isinstance(entries, dict):
+		entries = [entries]
+	if not entries:
+		# No [[post_install]] configured at all: perfectly valid.
+		return []
 	posts: list[PostInstall] = []
-	for i, raw in enumerate(commands):
-		# Split now (no shell interpolation at run time); bad quoting is a
-		# config error, not a runtime surprise. Wrap in 'sh -c' for pipes.
-		try:
-			command = shlex.split(str(raw))
-		except ValueError as exc:
-			raise DeoxidizeError(f"{path}: post_install.commands[{i}]: {exc}") from exc
-		if not command:
-			raise DeoxidizeError(f"{path}: post_install.commands[{i}] is empty")
-		posts.append(PostInstall(command=command, raw=str(raw)))
+	for i, table in enumerate(entries):
+		commands = table.get("commands", [])
+		# A [[post_install]] entry without commands is a config mistake.
+		if not commands:
+			raise DeoxidizeError(f"{path}: post_install[{i}] needs a non-empty 'commands' list")
+		# Optional gate: commands only run when this package is present.
+		when = str(table["when_installed"]) if "when_installed" in table else None
+		if when is not None and not when:
+			raise DeoxidizeError(f"{path}: post_install[{i}].when_installed must not be empty")
+		for j, raw in enumerate(commands):
+			# Split now (no shell interpolation at run time); bad quoting is
+			# a config error, not a runtime surprise. Wrap in 'sh -c' for pipes.
+			try:
+				command = shlex.split(str(raw))
+			except ValueError as exc:
+				raise DeoxidizeError(f"{path}: post_install[{i}].commands[{j}]: {exc}") from exc
+			if not command:
+				raise DeoxidizeError(f"{path}: post_install[{i}].commands[{j}] is empty")
+			posts.append(PostInstall(command=command, raw=str(raw), when_installed=when))
 	return posts
 
 
@@ -146,8 +161,8 @@ def load_deoxidizer(path: Path) -> Deoxidizer:
 	tests = _parse_verify_tests(verify.get("tests", []), path)
 	# [[alternatives]] entries re-point update-alternatives groups.
 	alts = _parse_alternatives(data.get("alternatives", []), path)
-	# [post_install] commands run after the apply steps finish.
-	posts = _parse_post_install(data["post_install"], path) if "post_install" in data else []
+	# [[post_install]] entries run after the apply steps finish.
+	posts = _parse_post_install(data.get("post_install", []), path)
 
 	# A block-only deoxidizer must block something in at least one phase.
 	if not swap and not post_swap_block and not early_block.packages:

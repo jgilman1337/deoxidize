@@ -77,6 +77,9 @@ class PostInstall:
 	command: list[str]
 	# Raw command string, for display and --list output.
 	raw: str
+	# Gate: only run when this package is on the system (installed now, or
+	# removed-with-conffiles). None = unconditional.
+	when_installed: str | None = None
 
 
 @dataclass

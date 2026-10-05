@@ -164,7 +164,8 @@ def main(argv: list[str]) -> int:
 					line += f" (rollback: {alt.rollback})"
 				print(line)
 			for post in d.post_install:
-				print(f"  post-install: {post.raw}")
+				gate = f" (when {post.when_installed} is present)" if post.when_installed else ""
+				print(f"  post-install{gate}: {post.raw}")
 			if d.verify_binaries or d.verify_tests:
 				print(f"  verify: {len(d.verify_binaries)} binary check(s), {len(d.verify_tests)} output test(s)")
 			print(f"  source: {d.path}")

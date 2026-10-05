@@ -114,6 +114,27 @@ class System:
 		)
 		return "ok installed" in result.stdout
 
+	def package_known(self, pkg: str) -> bool:
+		"""True if dpkg shows the package as installed now ('installed') or
+		removed with conffiles still on disk ('config-files').
+
+		Conditions for [[post_install.when_installed]] use this so a
+		re-run after a removal still matches the variant that was installed.
+		States like 'not-installed'/'unknown' (never installed or purged)
+		do not count: there is nothing to restore for them.
+		"""
+		# Dry-run assumes worst case: every condition matches, so previews
+		# show every branch that could run.
+		if self.dry_run:
+			return True
+		result = subprocess.run(
+			["dpkg-query", "-W", "-f=${db:Status-Status}", pkg],
+			capture_output=True,
+			text=True,
+			check=False,
+		)
+		return result.stdout.strip() in {"installed", "config-files"}
+
 	def set_alternative(self, name: str, path: str) -> bool:
 		"""Point an update-alternatives master link at a registered path.
 

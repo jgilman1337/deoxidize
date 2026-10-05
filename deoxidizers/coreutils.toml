@@ -34,12 +34,20 @@ binaries = ["ls"]
 command = "ls --version"
 expected = "GNU coreutils"
 
-# Removing the uutils provider can drop the ubuntu-minimal metapackage
-# (nothing else depends on it once the rust stack is gone). Reinstall it
-# without recommends so it keeps tracking the curated minimal set.
-# Post-install commands run noninteractive (-y, no prompt) and their
-# output is captured unless -v.
-[post_install]
+# Removing the uutils provider can drop the minimal metapackage(s) (nothing
+# else depends on them once the rust stack is gone). Restore whichever this
+# system tracks: server installs gate on ubuntu-server-minimal, everything
+# else on ubuntu-minimal. Conditions are checked BEFORE any removal, so the
+# metapackage is still on disk (or leaves a conffile record) at that point.
+# Post-install commands run noninteractive and their output is captured unless -v.
+[[post_install]]
+when_installed = "ubuntu-server-minimal"
+commands = [
+	"apt install --no-install-recommends -y ubuntu-server-minimal",
+]
+
+[[post_install]]
+when_installed = "ubuntu-minimal"
 commands = [
 	"apt install --no-install-recommends -y ubuntu-minimal",
 ]

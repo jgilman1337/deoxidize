@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .model import DeoxidizeError, Deoxidizer
+from .model import DeoxidizeError, Deoxidizer, PostInstall
 from .pins import write_pin_files
 from .system import LEGACY_PREF_FILE, System
 
@@ -25,19 +25,36 @@ def apply_alternatives(sys_: System, d: Deoxidizer) -> None:
 		sys_.set_alternative(alt.name, alt.apply)
 
 
-def run_post_install(sys_: System, d: Deoxidizer) -> None:
-	"""Run the deoxidizer's declarative post-install commands, best-effort.
+def run_post_install(sys_: System, d: Deoxidizer, selected: list[PostInstall]) -> None:
+	"""Run the deoxidizer's selected post-install commands, best-effort.
 
 	The swap and pins have already succeeded by this point, so an auxiliary
 	command failing (e.g. a metapackage restore) warns instead of failing
 	the run — the admin sees it and can re-run or fix manually.
 	"""
-	for post in d.post_install:
+	for post in selected:
 		print(f"[{d.name}] post-install: {post.raw}")
 		try:
 			sys_.run(post.command)
 		except DeoxidizeError as exc:
 			print(f"warning: post-install command failed: {exc}")
+
+
+def select_post_install(sys_: System, d: Deoxidizer) -> list[PostInstall]:
+	"""Pick the post-install entries whose conditions currently hold.
+
+	MUST run before any package removal: a when_installed package can be
+	one the swap removes, and the dpkg record (installed or removed-with-
+	conffiles) proves which variant this system tracks.
+	"""
+	selected: list[PostInstall] = []
+	for post in d.post_install:
+		# Unconditional entries always run; gated ones need the package.
+		if post.when_installed is None or sys_.package_known(post.when_installed):
+			selected.append(post)
+		else:
+			sys_.vprint(f"[{d.name}] post-install skipped ({post.when_installed} not present): {post.raw}")
+	return selected
 
 
 def _install_or_fallback(sys_: System, d: Deoxidizer, install: list[str]) -> None:
@@ -90,10 +107,14 @@ def apply_same_transaction_swap(sys_: System, d: Deoxidizer, remaining: list[str
 
 def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 	"""Apply one deoxidizer's swap (if any) and remove leftover targets."""
+	# Conditions are evaluated up front: nothing has been removed yet, so
+	# dpkg still shows which metapackage variants this system tracks.
+	selected_posts = select_post_install(sys_, d)
 	if not d.swap:
 		# Block-only deoxidizers swap nothing, but may still steer
 		# alternatives groups (e.g. when the GNU side is already installed).
 		apply_alternatives(sys_, d)
+		run_post_install(sys_, d, selected_posts)
 		return
 	swap = d.swap
 	# Skip the swap entirely when the replacement is already installed and
@@ -120,7 +141,7 @@ def apply_deoxidizer(sys_: System, d: Deoxidizer) -> None:
 	# The swap is done: make sure the alternatives group selects the GNU path.
 	apply_alternatives(sys_, d)
 	# Auxiliary declarative commands (e.g. metapackage restoration) run last.
-	run_post_install(sys_, d)
+	run_post_install(sys_, d, selected_posts)
 
 
 def verify_deoxidizer(sys_: System, d: Deoxidizer, pref_dir: Path) -> bool:
