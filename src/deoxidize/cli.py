@@ -61,6 +61,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 		help="skip the pre-run confirmation prompt",
 	)
 	parser.add_argument(
+		"-v",
+		"--verbose",
+		action="store_true",
+		help="show detail: stream command output live, print pin bodies, "
+		"apt-cache policy, and dpkg -S ownership (normal runs stay minimal)",
+	)
+	parser.add_argument(
 		"--allow-outdated",
 		action="store_true",
 		help="skip the up-to-date pre-flight check (offline/air-gapped hosts)",
@@ -176,7 +183,7 @@ def main(argv: list[str]) -> int:
 		print("error: run as root: sudo ./deoxidize", file=sys.stderr)
 		return EXIT_ERROR
 
-	sys_ = System(dry_run=args.dry_run, allow_remove_essential=args.allow_remove_essential)
+	sys_ = System(dry_run=args.dry_run, allow_remove_essential=args.allow_remove_essential, verbose=args.verbose)
 	try:
 		if args.rollback:
 			# Rollback deliberately skips the freshness gate: undo must work
@@ -185,7 +192,7 @@ def main(argv: list[str]) -> int:
 				# Preview first: exactly which files are removed and which
 				# commands run, before asking for consent.
 				print("=== Rollback preview: exactly what will be removed and run ===")
-				preview = System(dry_run=True, allow_remove_essential=args.allow_remove_essential)
+				preview = System(dry_run=True, allow_remove_essential=args.allow_remove_essential, verbose=args.verbose)
 				run_rollback(preview, deoxidizers, args.pref_dir)
 				print("=== End rollback preview ===")
 			confirm_plan(sys_, deoxidizers, assume_yes=args.yes, action="roll back")
@@ -201,7 +208,7 @@ def main(argv: list[str]) -> int:
 				# every pin file body and every APT command (worst-case
 				# assumptions: blocked packages treated as installed).
 				print("=== Plan preview: exactly what will be written and run ===")
-				preview = System(dry_run=True, allow_remove_essential=args.allow_remove_essential)
+				preview = System(dry_run=True, allow_remove_essential=args.allow_remove_essential, verbose=args.verbose)
 				run_plan(preview, deoxidizers, autoremove=args.autoremove, pref_dir=args.pref_dir)
 				print("=== End plan preview ===")
 			confirm_plan(sys_, deoxidizers, assume_yes=args.yes, action="apply", autoremove=args.autoremove)

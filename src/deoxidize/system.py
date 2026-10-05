@@ -17,9 +17,11 @@ LEGACY_PREF_FILE = "/etc/apt/preferences.d/99-block-sudo-rs-rust-coreutils.pref"
 class System:
 	"""Root-checked wrapper around apt/dpkg with dry-run support."""
 
-	def __init__(self, dry_run: bool, allow_remove_essential: bool) -> None:
+	def __init__(self, dry_run: bool, allow_remove_essential: bool, verbose: bool = False) -> None:
 		self.dry_run = dry_run
 		self.allow_remove_essential = allow_remove_essential
+		# Verbose runs stream even quiet-marked command output (apt update).
+		self.verbose = verbose
 		# Shared dpkg flags keep existing conffiles instead of prompting.
 		self.dpkg_opts = [
 			"-o",
@@ -32,32 +34,41 @@ class System:
 		"""Print a command; raise instead of running when in dry-run mode."""
 		print(f"[dry-run] would run: {shlex.join(cmd)}")
 
-	def run(self, cmd: list[str], allow_fail: bool = False, quiet: bool = False) -> bool:
+	def vprint(self, message: str) -> None:
+		"""Print detail output: only on -v, or always in dry-run previews.
+
+		Dry-run's job is showing exactly what would happen, so plan
+		previews keep full detail regardless of the verbose flag.
+		"""
+		if self.verbose or self.dry_run:
+			print(message)
+
+	def run(self, cmd: list[str], allow_fail: bool = False) -> bool:
 		"""Run a system command, honoring dry-run. Returns success.
 
-		quiet=True captures the command's output instead of streaming it;
-		a failure still prints what was captured so errors stay debuggable.
+		Verbose (-v) streams command output live; normal runs capture it
+		and print only on failure, keeping logs to the bare minimum.
 		"""
 		# Dry-run announces and reports success without touching the system.
 		if self.dry_run:
 			self._announce(cmd)
 			return True
-		# Quiet mode swallows success output; failures are printed below.
-		if quiet:
+		# Verbose streams live; default captures and shows only failures.
+		if self.verbose:
+			result = subprocess.run(cmd, check=False)
+		else:
 			result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 			if result.returncode != 0:
 				print(result.stdout, end="")
 				print(result.stderr, end="", file=sys.stderr)
-		else:
-			result = subprocess.run(cmd, check=False)
 		# allow_fail callers (verification, unhold) handle failure themselves.
 		if result.returncode != 0 and not allow_fail:
 			raise DeoxidizeError(f"command failed ({result.returncode}): {shlex.join(cmd)}")
 		return result.returncode == 0
 
-	def apt_get(self, *args: str, allow_fail: bool = False, quiet: bool = False) -> bool:
+	def apt_get(self, *args: str, allow_fail: bool = False) -> bool:
 		"""Run apt-get with the shared noninteractive dpkg options."""
-		return self.run(["apt-get", "-y", *self.dpkg_opts, *args], allow_fail=allow_fail, quiet=quiet)
+		return self.run(["apt-get", "-y", *self.dpkg_opts, *args], allow_fail=allow_fail)
 
 	def apt_install(self, *pkgs: str) -> bool:
 		"""Install packages without recommends; prefers apt(8) if present."""

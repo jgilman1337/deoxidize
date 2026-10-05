@@ -19,11 +19,9 @@ def apply_alternatives(sys_: System, d: Deoxidizer) -> None:
 	Idempotent and best-effort: the probe in System.set_alternative skips
 	groups or paths this system does not have.
 	"""
-	# Announce even when there is nothing configured, so runs are legible.
-	if not d.alternatives:
-		return
+	# Detail output (-v); the skipping notes below always show.
 	for alt in d.alternatives:
-		print(f"[{d.name}] update-alternatives --set {alt.name} {alt.apply}")
+		sys_.vprint(f"[{d.name}] update-alternatives --set {alt.name} {alt.apply}")
 		sys_.set_alternative(alt.name, alt.apply)
 
 
@@ -137,8 +135,8 @@ def verify_deoxidizer(sys_: System, d: Deoxidizer, pref_dir: Path) -> bool:
 	if not sys_.dry_run:
 		pin = pref_dir / f"99-deoxidize-{d.name}.pref"
 		if pin.exists():
-			print(f"--- {pin} ---")
-			print(pin.read_text(encoding="utf-8"), end="")
+			sys_.vprint(f"--- {pin} ---")
+			sys_.vprint(pin.read_text(encoding="utf-8"))
 
 	# apt-cache policy is the ground truth for whether pins took effect.
 	if d.blocked_packages and not sys_.dry_run:
@@ -155,16 +153,17 @@ def verify_deoxidizer(sys_: System, d: Deoxidizer, pref_dir: Path) -> bool:
 		if sys_.dry_run:
 			continue
 		# dpkg -S identifies the owning package; alternatives symlinks need
-		# a resolved-realpath retry (same logic as deoxidize.sh).
+		# a resolved-realpath retry (same logic as deoxidize.sh). Ownership
+		# detail is -v output; the anomaly note below always shows.
 		owner = subprocess.run(["dpkg", "-S", resolved], capture_output=True, text=True, check=False)
 		if owner.returncode == 0:
-			print(owner.stdout.strip())
+			sys_.vprint(owner.stdout.strip())
 			continue
 		real = Path(resolved).resolve()
 		if real != Path(resolved):
 			owner = subprocess.run(["dpkg", "-S", str(real)], capture_output=True, text=True, check=False)
 			if owner.returncode == 0:
-				print(owner.stdout.strip())
+				sys_.vprint(owner.stdout.strip())
 				continue
 		print(f"(no single deb owns path for {binary}: {resolved}; try: dpkg -L {binary})")
 
@@ -216,7 +215,7 @@ def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref
 				if pkg not in ensure:
 					ensure.append(pkg)
 	if not ensure:
-		print("no bootstrap packages declared; skipping")
+		sys_.vprint("no bootstrap packages declared; skipping")
 	else:
 		# Real runs skip packages already installed; dry-run shows the full
 		# list so the preview stays complete (worst-case assumption).
@@ -224,15 +223,16 @@ def run_plan(sys_: System, deoxidizers: list[Deoxidizer], autoremove: bool, pref
 		if needed:
 			sys_.apt_install(*needed)
 		else:
-			print("bootstrap packages already present")
+			sys_.vprint("bootstrap packages already present")
 
 	print("=== 4) Apply swaps and remove Rust replacements ===")
 	for d in deoxidizers:
 		apply_deoxidizer(sys_, d)
 
-	print("=== 4b) Full APT preferences (deferred pins; safe after swaps) ===")
+	print("=== 4b) Full APT preferences (deferred pins; no refresh needed) ===")
+	# No apt-get update here: preferences are re-read at every solve, and
+	# the package lists did not change since step 2.
 	write_pin_files(deoxidizers, pref_dir, dry_run=sys_.dry_run, full=True)
-	sys_.apt_get("update")
 
 	print("=== 5) Autoremove unused deps (opt-in) ===")
 	if autoremove:

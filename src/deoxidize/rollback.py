@@ -36,7 +36,7 @@ def run_rollback(sys_: System, deoxidizers: list[Deoxidizer], pref_dir: Path) ->
 			pin.unlink()
 			print(f"removed {pin}")
 		else:
-			print(f"(no pin file at {pin}; nothing to remove)")
+			sys_.vprint(f"(no pin file at {pin}; nothing to remove)")
 
 	print("=== R2) Refresh package lists (blocked stack becomes installable again) ===")
 	sys_.apt_get("update")
@@ -64,8 +64,9 @@ def run_rollback(sys_: System, deoxidizers: list[Deoxidizer], pref_dir: Path) ->
 				print(f"[{d.name}] update-alternatives --set {alt.name} {alt.rollback}")
 				sys_.set_alternative(alt.name, alt.rollback)
 
-	print("=== R4) Refresh package lists and show resulting policy ===")
-	sys_.apt_get("update")
+	print("=== R4) Show resulting policy (no refresh needed; pins are re-read at solve time) ===")
+	# No apt-get update: removing pin files takes effect immediately, and the
+	# lists were already refreshed in R2.
 	# apt-cache policy is the ground truth that the pins are gone.
 	for d in deoxidizers:
 		if d.blocked_packages and not sys_.dry_run:

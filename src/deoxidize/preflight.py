@@ -29,9 +29,10 @@ def _pending_upgrade_count() -> int:
 
 def ensure_up_to_date(sys_: System) -> None:
 	"""Abort the run unless every package is current: refresh lists, then simulate an upgrade."""
-	# Fresh package lists make the simulation meaningful; dry-run only announces.
-	# Quiet: apt update's hit-list is noise; failures still print their output.
-	sys_.apt_get("update", quiet=True)
+	# One concise line for the refresh; full apt output is -v-only and
+	# failures still print everything they captured.
+	print("Refreshing package lists...")
+	sys_.apt_get("update")
 	pending = _pending_upgrade_count()
 	# Dry-run reports without failing so the plan stays previewable.
 	if sys_.dry_run:
