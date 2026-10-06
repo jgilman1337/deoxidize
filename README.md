@@ -4,6 +4,8 @@ Prefer **GNU `coreutils` and GNU `sudo`** (and other baselines) on **Debian/Ubun
 
 **Quick start:** `sudo ./deoxidize` from a root-capable session (local console or a shell where `sudo` still works). Read the definitions first; removing rust stack packages can pull **`ubuntu-minimal`** / **`ubuntu-server-minimal`** if nothing else keeps them installed. Always `./deoxidize --dry-run` first. The run **aborts unless the system is fully upgraded** (`--allow-outdated` to waive), **prints the full plan preview** (exact pin files and commands), and **asks for confirmation** before touching anything (`-y`/`--yes` to skip). Pick targets with `-i`, or undo with `-r`.
 
+Note: This repo was generated almost exclusively using AI, but has been tested rigorously on virtual machines. It is also running in production on 2 of my own Ubuntu systems, so rest assured this thing works. Still keep in mind that there is **no warranty** in the off chance this script bricks your system. Thank you for using deoxidize.
+
 ## Selective deoxidizing
 
 Run only part of the system — every definition is still loaded and validated, but only the selected ones execute:
